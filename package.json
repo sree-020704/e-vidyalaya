@@ -1,0 +1,17 @@
+{
+  "name": "database",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PostgreSQL schema and database seeding scripts for e-Vidyalaya",
+  "scripts": {
+    "db:schema": "psql -U postgres -d evidyalaya -f schema.sql",
+    "db:seed": "psql -U postgres -d evidyalaya -f seed.sql",
+    "db:reset": "npm run db:schema && npm run db:seed"
+  },
+  "keywords": [
+    "postgresql",
+    "schema",
+    "seed"
+  ],
+  "author": "e-Vidyalaya Team"
+}

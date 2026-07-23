@@ -1,0 +1,12 @@
+# Ignore node_modules everywhere in the project
+**/node_modules/
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Environment and log files
+.env
+.env.local
+*.log
