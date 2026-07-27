@@ -2,71 +2,149 @@ import React, { useState, useEffect } from "react";
 import DashboardLayout from "../../components/DashboardLayout";
 import { useRouter } from "next/router";
 
-interface ProgressMetric {
-  subject: string;
-  percentage: number;
-  grade: string;
-  color: string;
-}
-
 export default function StudentDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [selectedClassFilter, setSelectedClassFilter] =
+    useState<string>("Grade 10");
 
-  // Filters
-  const [docFilter, setDocFilter] = useState<"all" | "pdf" | "ppt" | "doc">(
-    "all",
-  );
-  const [eventFilter, setEventFilter] = useState<"all" | "sports" | "cultural">(
-    "all",
-  );
+  const gradesList = [
+    "Grade 1",
+    "Grade 2",
+    "Grade 3",
+    "Grade 4",
+    "Grade 5",
+    "Grade 6",
+    "Grade 7",
+    "Grade 8",
+    "Grade 9",
+    "Grade 10",
+  ];
 
-  // AI Chat Bot State
+  // Dynamic Stores
+  const [profile, setProfile] = useState<any>({
+    name: "Rahul Sharma",
+    email: "rahul@student.com",
+    admissionNo: "EV-2026-1042",
+    gradeLevel: "Class 10",
+    avatarUrl: "",
+  });
+
+  const [overview, setOverview] = useState<any>({
+    attendancePct: 92,
+    academicScorePct: 88,
+    pendingAssignments: 1,
+    overallGrade: "A",
+  });
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Tab Data
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [certCourses, setCertCourses] = useState<any[]>([]);
+  const [libraryDocs, setLibraryDocs] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any>({
+    present_days: 88,
+    late_days: 4,
+    absent_days: 2,
+  });
+  const [activities, setActivities] = useState<any[]>([]);
+
+  // 🤖 FLOATING AI CHATBOT STATE
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState([
     {
       sender: "bot",
-      text: "Hello! I am your e-Vidyalaya AI Assistant. How can I help you with notes, Zoom links, or courses today?",
+      text: "Hello! I am EV-Bot AI Campus Assistant. Ask me anything about your class timetable, homework test links, or Zoom rooms!",
     },
   ]);
 
   useEffect(() => {
+    // Load student profile from LocalStorage if updated by profile page
     try {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      } else {
-        setUser({
-          name: "Rahul Sharma",
-          role: "student",
-          gradeLevel: "Class 10",
-          avatarUrl: null,
-        });
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        setProfile(JSON.parse(stored));
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) {}
   }, []);
 
   useEffect(() => {
-    if (router.query.tab) {
-      setActiveTab(router.query.tab as string);
-    }
+    if (router.query.tab) setActiveTab(router.query.tab as string);
   }, [router.query.tab]);
 
-  const handleTabSwitch = (tab: string) => {
-    setActiveTab(tab);
-    router.push(`/dashboard/student?tab=${tab}`, undefined, { shallow: true });
-  };
+  // FETCH ALL NAVBAR DATA DYNAMICALLY FROM BACKEND
+  useEffect(() => {
+    async function fetchTabData() {
+      const encGrade = encodeURIComponent(selectedClassFilter);
+      try {
+        // Fetch Live Notifications
+        const notifRes = await fetch(
+          `http://localhost:5000/api/student-portal/notifications?grade=${encGrade}`,
+        );
+        if (notifRes.ok) setNotifications(await notifRes.json());
 
-  const goToProfile = () => {
-    router.push(`/dashboard/profile?fromTab=${activeTab}`);
-  };
+        if (activeTab === "overview") {
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/overview?grade=${encGrade}`,
+          );
+          if (res.ok) setOverview(await res.json());
+        } else if (activeTab === "academics" || activeTab === "timetable") {
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/schedules?grade=${encGrade}`,
+          );
+          if (res.ok) setSchedules(await res.json());
+        } else if (activeTab === "courses") {
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/courses?grade=${encGrade}&category=Regular`,
+          );
+          if (res.ok) setCourses(await res.json());
+        } else if (activeTab === "certifications") {
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/courses?grade=${encGrade}&category=Certification`,
+          );
+          if (res.ok) setCertCourses(await res.json());
+        } else if (activeTab === "elibrary") {
+          const res = await fetch(
+            `http://localhost:5000/faculty/content/all?grade=${encGrade}`,
+          );
+          if (res.ok) setLibraryDocs(await res.json());
+        } else if (activeTab === "assignments" || activeTab === "marks") {
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/assignments?grade=${encGrade}`,
+          );
+          if (res.ok) setAssignments(await res.json());
+        } else if (activeTab === "attendance") {
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/attendance`,
+          );
+          if (res.ok) setAttendance(await res.json());
+        } else if (
+          activeTab === "sports" ||
+          activeTab === "events" ||
+          activeTab === "workshops"
+        ) {
+          const cat =
+            activeTab === "sports"
+              ? "Sports"
+              : activeTab === "workshops"
+                ? "Workshops"
+                : "Events";
+          const res = await fetch(
+            `http://localhost:5000/api/student-portal/activities?category=${cat}`,
+          );
+          if (res.ok) setActivities(await res.json());
+        }
+      } catch (err) {
+        console.error("Fetch error:", err);
+      }
+    }
+
+    fetchTabData();
+  }, [selectedClassFilter, activeTab]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,54 +155,42 @@ export default function StudentDashboard() {
     setChatInput("");
 
     setTimeout(() => {
-      let botReply =
-        "I am processing your query. Please check your dashboard tabs!";
+      let botReply = "I am processing your query. Check your navigation tabs!";
       const lower = userMsg.toLowerCase();
 
-      if (lower.includes("zoom") || lower.includes("class")) {
+      if (
+        lower.includes("zoom") ||
+        lower.includes("live") ||
+        lower.includes("class")
+      ) {
         botReply =
-          "Your live class timetable and Zoom links are in the Academics tab!";
-      } else if (lower.includes("course")) {
+          "Your interactive live class Zoom links are under the Academics tab!";
+      } else if (lower.includes("timetable") || lower.includes("schedule")) {
         botReply =
-          "You can view enrolled & available catalog courses under the Courses tab.";
+          "Your weekly class matrix is available under the Timetable tab.";
+      } else if (
+        lower.includes("marks") ||
+        lower.includes("assignment") ||
+        lower.includes("test")
+      ) {
+        botReply =
+          "Online test forms and graded scores are located under Assignments & Marks!";
+      } else if (lower.includes("profile") || lower.includes("photo")) {
+        botReply =
+          "Click on your top-left circular avatar DP to edit your student profile!";
       }
 
       setChatMessages((prev) => [...prev, { sender: "bot", text: botReply }]);
-    }, 500);
+    }, 400);
   };
 
-  const subjectProgress: ProgressMetric[] = [
-    {
-      subject: "Data Structures",
-      percentage: 85,
-      grade: "A",
-      color: "#3B82F6",
-    },
-    { subject: "DBMS & SQL", percentage: 92, grade: "A+", color: "#10B981" },
-    {
-      subject: "Web Development",
-      percentage: 78,
-      grade: "B+",
-      color: "#F59E0B",
-    },
-    {
-      subject: "Operating Systems",
-      percentage: 64,
-      grade: "B",
-      color: "#EF4444",
-    },
-  ];
+  const handleTabSwitch = (tab: string) => {
+    setActiveTab(tab);
+    router.push(`/dashboard/student?tab=${tab}`, undefined, { shallow: true });
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F4F6F9] flex items-center justify-center font-bold text-[#0F1E3D] animate-pulse">
-        Loading Student Workspace...
-      </div>
-    );
-  }
-
-  const initials = user?.name
-    ? user.name
+  const initials = profile.name
+    ? profile.name
         .split(" ")
         .map((n: string) => n[0])
         .join("")
@@ -138,165 +204,186 @@ export default function StudentDashboard() {
       activeTab={activeTab}
       onTabChange={handleTabSwitch}
     >
-      <div className="space-y-6 relative">
-        {/* BANNER WITH PROFILE AVATAR */}
-        <div className="bg-gradient-to-r from-[#0F1E3D] via-[#16294C] to-[#0F1E3D] text-white p-6 px-8 rounded-2xl flex flex-col md:flex-row justify-between items-center shadow-lg gap-4">
+      <div className="space-y-6 font-sans text-slate-800">
+        {/* HEADER BANNER WITH CIRCULAR DP AVATAR & NOTIFICATIONS */}
+        <div className="bg-gradient-to-r from-[#0F1E3D] via-[#16294C] to-[#0F1E3D] text-white p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
           <div className="flex items-center gap-4">
+            {/* CIRCULAR PROFILE DP BUTTON (CLICKS TO EDIT PROFILE PAGE) */}
             <div
-              className="relative group cursor-pointer"
-              onClick={goToProfile}
+              onClick={() =>
+                router.push(`/dashboard/profile?fromTab=${activeTab}`)
+              }
+              className="relative cursor-pointer group"
+              title="Click to view/edit student profile settings"
             >
-              {user?.avatarUrl ? (
+              {profile.avatarUrl ? (
                 <img
-                  src={user.avatarUrl}
-                  alt={user?.name}
-                  className="w-16 h-16 rounded-full object-cover border-2 border-[#B8842E] shadow-md"
+                  src={profile.avatarUrl}
+                  alt="Profile Avatar"
+                  className="w-14 h-14 rounded-full border-2 border-[#B8842E] object-cover shadow-md group-hover:scale-105 transition"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full border-2 border-[#B8842E] bg-[#16294C] text-[#E7DCC4] font-black flex items-center justify-center text-xl shadow-md">
+                <div className="w-14 h-14 rounded-full border-2 border-[#B8842E] bg-[#16294C] text-[#E7DCC4] font-black flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition">
                   {initials}
                 </div>
               )}
-              <span className="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-[#0F1E3D] rounded-full"></span>
+              <span className="absolute bottom-0 right-0 bg-[#B8842E] text-[9px] text-white rounded-full px-1 font-bold">
+                ✎
+              </span>
             </div>
 
             <div>
               <h1 className="font-serif font-bold text-2xl text-[#E7DCC4]">
-                Welcome back, {user?.name || "Student"}!
+                {profile.name}
               </h1>
-              <p className="text-xs text-slate-300 mt-1">
-                Class:{" "}
-                <span className="font-semibold text-[#B8842E]">
-                  {user?.gradeLevel || "Class 10"}
+              <p className="text-xs text-slate-300 mt-0.5">
+                Admission No:{" "}
+                <span className="font-mono text-amber-300">
+                  {profile.admissionNo || "EV-2026-1042"}
                 </span>{" "}
-                · Central Server Connected
+                · Class:{" "}
+                <span className="font-bold text-amber-300">
+                  {selectedClassFilter}
+                </span>
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={goToProfile}
-            className="bg-[#B8842E] hover:bg-[#a07226] text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition cursor-pointer shadow-md flex items-center gap-2"
-          >
-            <span>Edit Profile</span>
-            <span>👤</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* NOTIFICATIONS BELL DROPDOWN */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="bg-white/10 hover:bg-white/20 p-2.5 rounded-xl border border-white/20 text-sm relative cursor-pointer"
+              >
+                🔔
+                {notifications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                    {notifications.length}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-80 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 z-50 p-4 space-y-3">
+                  <div className="flex justify-between items-center border-b pb-2">
+                    <span className="font-bold text-xs text-[#0F1E3D]">
+                      🔔 Faculty & Admin Notices
+                    </span>
+                    <button
+                      onClick={() => setShowNotifications(false)}
+                      className="text-xs font-bold text-slate-400"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-2 text-xs">
+                    {notifications.length === 0 ? (
+                      <p className="text-slate-400 text-center py-2">
+                        No new announcements.
+                      </p>
+                    ) : (
+                      notifications.map((n) => (
+                        <div
+                          key={n.id}
+                          className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1"
+                        >
+                          <span className="font-bold text-[10px] uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                            {n.sender_role}: {n.sender_name}
+                          </span>
+                          <h5 className="font-bold text-[#0F1E3D]">
+                            {n.title}
+                          </h5>
+                          <p className="text-slate-500 text-[11px]">
+                            {n.message}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* CLASS FILTER DROPDOWN */}
+            <div className="bg-white/10 p-2 px-3 rounded-xl border border-white/20 flex items-center gap-2">
+              <span className="text-xs text-amber-300 font-bold">Grade:</span>
+              <select
+                value={selectedClassFilter}
+                onChange={(e) => setSelectedClassFilter(e.target.value)}
+                className="bg-[#0F1E3D] text-white text-xs font-bold px-2 py-1 rounded outline-none cursor-pointer"
+              >
+                {gradesList.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
-        {/* 1. OVERVIEW */}
+        {/* 1. OVERVIEW TAB */}
         {activeTab === "overview" && (
-          <div className="space-y-6">
-            <h2 className="text-lg font-serif font-bold text-[#0F1E3D]">
-              Subject Mastery & Progress Overview
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {subjectProgress.map((item) => {
-                const strokeDashoffset = 283 - (283 * item.percentage) / 100;
-                return (
-                  <div
-                    key={item.subject}
-                    className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col items-center justify-center text-center hover:shadow-md transition"
-                  >
-                    <div className="relative w-28 h-28 flex items-center justify-center">
-                      <svg
-                        className="w-full h-full transform -rotate-90"
-                        viewBox="0 0 100 100"
-                      >
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
-                          stroke="#E2E8F0"
-                          strokeWidth="8"
-                          fill="transparent"
-                        />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
-                          stroke={item.color}
-                          strokeWidth="8"
-                          strokeDasharray="283"
-                          strokeDashoffset={strokeDashoffset}
-                          strokeLinecap="round"
-                          fill="transparent"
-                          className="transition-all duration-1000 ease-out"
-                        />
-                      </svg>
-                      <div className="absolute flex flex-col items-center justify-center">
-                        <span className="text-xl font-black text-slate-800">
-                          {item.percentage}%
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-400">
-                          Grade {item.grade}
-                        </span>
-                      </div>
-                    </div>
-                    <h3 className="font-bold text-sm text-slate-800 mt-4">
-                      {item.subject}
-                    </h3>
-                  </div>
-                );
-              })}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
+              <span className="text-2xl font-black text-[#0F1E3D]">
+                {overview.attendancePct}%
+              </span>
+              <p className="text-xs text-slate-500 mt-1">Attendance Record</p>
+            </div>
+            <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
+              <span className="text-2xl font-black text-emerald-600">
+                {overview.academicScorePct}%
+              </span>
+              <p className="text-xs text-slate-500 mt-1">Academic Score Avg</p>
+            </div>
+            <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
+              <span className="text-2xl font-black text-amber-600">
+                {overview.pendingAssignments}
+              </span>
+              <p className="text-xs text-slate-500 mt-1">Pending Homework</p>
+            </div>
+            <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
+              <span className="text-2xl font-black text-purple-600">
+                {overview.overallGrade}
+              </span>
+              <p className="text-xs text-slate-500 mt-1">Overall Grade Level</p>
             </div>
           </div>
         )}
 
-        {/* 2. ACADEMICS (TIMETABLE & ZOOM LINKS) */}
+        {/* 2. ACADEMICS TAB */}
         {activeTab === "academics" && (
-          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
-            <div>
-              <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                📚 Academic Live Timetable & Virtual Classrooms
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Access your schedule and join live lectures directly through
-                Zoom meeting links.
-              </p>
-            </div>
-            <div className="space-y-4">
-              {[
-                {
-                  code: "MATH-10",
-                  title: "10th Standard Mathematics",
-                  time: "09:00 AM – 10:00 AM (Mon & Wed)",
-                  faculty: "Prof. R. Sharma",
-                  zoomUrl: "https://zoom.us/j/1234567890",
-                  status: "Live Now",
-                },
-                {
-                  code: "SCI-10",
-                  title: "Physical Science & Physics Lab",
-                  time: "10:30 AM – 11:30 AM (Tue & Thu)",
-                  faculty: "Dr. K. Varma",
-                  zoomUrl: "https://zoom.us/j/0987654321",
-                  status: "Upcoming",
-                },
-              ].map((item, idx) => (
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
+            <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
+              🎥 Virtual Live Classrooms ({selectedClassFilter})
+            </h2>
+            <div className="space-y-3">
+              {schedules.map((item) => (
                 <div
-                  key={idx}
-                  className="p-5 border border-slate-200 rounded-2xl bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+                  key={item.id}
+                  className="p-4 border rounded-xl bg-slate-50 flex justify-between items-center"
                 >
                   <div>
-                    <span className="text-[10px] font-bold uppercase bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full border">
-                      {item.code}
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                      {item.code || "LIVE"}
                     </span>
-                    <h4 className="font-bold text-base text-[#0F1E3D] mt-1">
+                    <h4 className="font-bold text-sm text-[#0F1E3D] mt-1">
                       {item.title}
                     </h4>
                     <p className="text-xs text-slate-500">
-                      ⏰ {item.time} · Faculty: {item.faculty}
+                      ⏰ {item.start_time} - {item.end_time} ·{" "}
+                      {item.day_of_week}
                     </p>
                   </div>
                   <a
-                    href={item.zoomUrl}
+                    href={item.zoomUrl || item.meeting_link}
                     target="_blank"
                     rel="noreferrer"
-                    className="bg-[#0F1E3D] hover:bg-[#16294C] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-md flex items-center gap-2"
+                    className="bg-[#0F1E3D] text-white text-xs font-bold px-4 py-2 rounded-xl shadow"
                   >
-                    <span>Join Zoom Room</span>
-                    <span>🎥</span>
+                    Join Zoom 🎥
                   </a>
                 </div>
               ))}
@@ -304,144 +391,305 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        {/* 3. COURSES (ENROLLED & CATALOG) */}
+        {/* 3. COURSES TAB */}
         {activeTab === "courses" && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-              <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                📖 My Enrolled Courses
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  {
-                    title: "10th Standard Mathematics",
-                    faculty: "Prof. R. Sharma",
-                    progress: 75,
-                  },
-                  {
-                    title: "Physical Science & Physics",
-                    faculty: "Dr. K. Varma",
-                    progress: 60,
-                  },
-                ].map((course, idx) => (
-                  <div
-                    key={idx}
-                    className="p-5 border border-slate-200 rounded-2xl bg-slate-50/50 space-y-3"
-                  >
-                    <h4 className="font-bold text-base text-[#0F1E3D]">
-                      {course.title}
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Faculty: {course.faculty}
-                    </p>
-                    <button className="w-full bg-[#0F1E3D] text-white py-2 rounded-xl text-xs font-bold">
-                      Enter Classroom →
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-              <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                🌐 Available Course Catalog
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  {
-                    code: "CS-101",
-                    title: "Computer Applications & C++ Coding",
-                    dept: "Computer Science Dept",
-                  },
-                  {
-                    code: "ENV-201",
-                    title: "Environmental Science & Sustainability",
-                    dept: "Science Dept",
-                  },
-                ].map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-5 border border-slate-200 rounded-2xl bg-white flex justify-between items-center"
-                  >
-                    <div>
-                      <span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                        {item.code}
-                      </span>
-                      <h4 className="font-bold text-sm text-[#0F1E3D] mt-1">
-                        {item.title}
-                      </h4>
-                      <p className="text-xs text-slate-500">{item.dept}</p>
-                    </div>
-                    <button className="bg-[#B8842E] text-white text-xs font-bold px-3 py-2 rounded-xl">
-                      Enroll Now
-                    </button>
-                  </div>
-                ))}
-              </div>
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
+            <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
+              📖 Standard Curriculum Courses ({selectedClassFilter})
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {courses.map((c) => (
+                <div
+                  key={c.id}
+                  className="p-4 border rounded-xl bg-slate-50 space-y-2"
+                >
+                  <span className="text-[10px] font-bold bg-[#0F1E3D] text-white px-2 py-0.5 rounded">
+                    {c.code}
+                  </span>
+                  <h4 className="font-bold text-sm text-[#0F1E3D]">
+                    {c.title}
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Provider: {c.provider}
+                  </p>
+                  <button className="w-full bg-emerald-600 text-white py-1 rounded-lg text-xs font-bold">
+                    ✓ Enrolled
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* 4. CERTIFICATION COURSES */}
+        {/* 4. CERTIFICATION COURSES TAB */}
         {activeTab === "certifications" && (
-          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
             <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-              🎓 Skill Certification Courses
+              🎓 Admin Certification Programs ({selectedClassFilter})
             </h2>
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs">
-              AWS & Full-Stack Web Development certification tracks open for
-              enrollment.
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {certCourses.map((c) => (
+                <div
+                  key={c.id}
+                  className="p-4 border rounded-xl bg-amber-50/50 border-amber-200 space-y-2"
+                >
+                  <span className="text-[10px] font-bold bg-[#B8842E] text-white px-2 py-0.5 rounded">
+                    {c.code}
+                  </span>
+                  <h4 className="font-bold text-sm text-[#0F1E3D]">
+                    {c.title}
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Certified by: {c.provider}
+                  </p>
+                  <button className="w-full bg-[#0F1E3D] text-white py-1.5 rounded-lg text-xs font-bold">
+                    Enroll in Certification 📜
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* 5. DIGITAL LIBRARY */}
+        {/* 5. DIGITAL LIBRARY TAB */}
         {activeTab === "elibrary" && (
-          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
             <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-              📂 Faculty Digital Resource Library
+              📂 Digital Library Downloads ({selectedClassFilter})
             </h2>
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs">
-              Lecture PDFs, Word Docs, and PPT Slide decks are available for
-              download.
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {libraryDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="p-4 border rounded-xl bg-white space-y-3 flex flex-col justify-between hover:shadow-md transition"
+                >
+                  <div>
+                    <span className="text-[10px] font-bold uppercase bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                      {(doc.doc_type || "pdf").toUpperCase()}
+                    </span>
+                    <h4 className="font-bold text-sm text-[#0F1E3D] mt-2">
+                      {doc.title}
+                    </h4>
+                  </div>
+                  <a
+                    href={doc.file_url}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-[#0F1E3D] text-white text-xs font-bold py-2 rounded-lg text-center block"
+                  >
+                    Download File 📥
+                  </a>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* 6. SPORTS & EVENTS */}
-        {activeTab === "events" && (
-          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+        {/* 6. SPORTS & EVENTS TAB */}
+        {(activeTab === "sports" || activeTab === "events") && (
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
             <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-              🏆 Sports & Cultural Campus Events
+              🏆 Campus Sports & Events
             </h2>
-            <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl text-purple-900 text-xs">
-              Cricket Tournament & Sanskriti Cultural Fest registration is
-              active.
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {activities.map((act) => (
+                <div
+                  key={act.id}
+                  className="p-4 border rounded-xl bg-slate-50 space-y-2"
+                >
+                  <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded uppercase">
+                    {act.category}
+                  </span>
+                  <h4 className="font-bold text-sm text-[#0F1E3D]">
+                    {act.title}
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    {act.details} · 📍 {act.venue}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 7. ASSIGNMENTS & MARKS TAB */}
+        {(activeTab === "assignments" || activeTab === "marks") && (
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
+            <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
+              📝 Homework Tests & Graded Marks ({selectedClassFilter})
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border">
+                <thead className="bg-slate-50 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="p-3">Title</th>
+                    <th className="p-3">Due Date</th>
+                    <th className="p-3">Online Test Link</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {assignments.map((a) => (
+                    <tr key={a.id}>
+                      <td className="p-3 font-bold">{a.title}</td>
+                      <td className="p-3">{a.due_date}</td>
+                      <td className="p-3">
+                        <a
+                          href={a.test_link || "https://forms.gle"}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 font-bold underline"
+                        >
+                          Open Online Form 🔗
+                        </a>
+                      </td>
+                      <td className="p-3">
+                        <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                          {a.status}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono font-bold">
+                        {a.obtained_marks} / {a.max_marks}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 8. WORKSHOPS TAB */}
+        {activeTab === "workshops" && (
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
+            <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
+              🔧 Interactive Student Workshops
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {activities.map((act) => (
+                <div
+                  key={act.id}
+                  className="p-4 border rounded-xl bg-purple-50/50 border-purple-200 space-y-2"
+                >
+                  <h4 className="font-bold text-sm text-[#0F1E3D]">
+                    {act.title}
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    {act.details} · 📍 {act.venue}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 9. TIMETABLE TAB */}
+        {activeTab === "timetable" && (
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
+            <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
+              🗓️ Weekly Class Timetable ({selectedClassFilter})
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-center border-collapse border border-slate-200">
+                <thead>
+                  <tr className="bg-[#0F1E3D] text-white uppercase text-[10px]">
+                    <th className="p-3 border">Period</th>
+                    <th className="p-3 border">Monday</th>
+                    <th className="p-3 border">Tuesday</th>
+                    <th className="p-3 border">Wednesday</th>
+                    <th className="p-3 border">Thursday</th>
+                    <th className="p-3 border">Friday</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="p-3 border font-bold bg-slate-100">
+                      Period 1<br />
+                      08:30-09:30 AM
+                    </td>
+                    <td className="p-3 border bg-blue-50/60 font-bold">
+                      {selectedClassFilter} Math
+                    </td>
+                    <td className="p-3 border bg-emerald-50/60 font-bold">
+                      {selectedClassFilter} Physics
+                    </td>
+                    <td className="p-3 border bg-blue-50/60 font-bold">
+                      {selectedClassFilter} Math
+                    </td>
+                    <td className="p-3 border bg-amber-50/60 font-bold">
+                      {selectedClassFilter} English
+                    </td>
+                    <td className="p-3 border bg-emerald-50/60 font-bold">
+                      {selectedClassFilter} Chemistry
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 10. ATTENDANCE TAB */}
+        {activeTab === "attendance" && (
+          <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
+            <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
+              📊 Official Attendance Log
+            </h2>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="p-4 bg-emerald-50 border rounded-xl">
+                <span className="text-2xl font-black text-emerald-700">
+                  {attendance.present_days} Days
+                </span>
+                <p className="text-xs">Present</p>
+              </div>
+              <div className="p-4 bg-amber-50 border rounded-xl">
+                <span className="text-2xl font-black text-amber-700">
+                  {attendance.late_days} Days
+                </span>
+                <p className="text-xs">Late</p>
+              </div>
+              <div className="p-4 bg-red-50 border rounded-xl">
+                <span className="text-2xl font-black text-red-700">
+                  {attendance.absent_days} Days
+                </span>
+                <p className="text-xs">Absent</p>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* FLOATING AI ASSISTANT */}
-      <div className="fixed bottom-6 right-6 z-50">
+      {/* 🤖 FLOATING AI CHATBOT WIDGET */}
+      <div className="fixed bottom-6 right-6 z-50 font-sans">
         {!chatOpen ? (
           <button
             onClick={() => setChatOpen(true)}
-            className="bg-[#0F1E3D] text-amber-300 font-bold p-4 rounded-full shadow-2xl hover:scale-105 transition flex items-center gap-2 border-2 border-[#B8842E]"
+            className="bg-[#0F1E3D] text-amber-300 font-bold p-4 rounded-full shadow-2xl hover:scale-105 transition flex items-center gap-2 border-2 border-[#B8842E] cursor-pointer"
           >
             <span>🤖 Ask EV-Bot AI</span>
           </button>
         ) : (
           <div className="w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col h-[400px]">
-            <div className="bg-[#0F1E3D] text-white p-4 flex justify-between">
+            <div className="bg-[#0F1E3D] text-white p-4 flex justify-between rounded-t-2xl">
               <span className="font-bold text-xs">EV-Bot Campus AI</span>
-              <button onClick={() => setChatOpen(false)}>✕</button>
+              <button
+                onClick={() => setChatOpen(false)}
+                className="cursor-pointer font-bold"
+              >
+                ✕
+              </button>
             </div>
             <div className="flex-1 p-4 overflow-y-auto space-y-2 text-xs">
               {chatMessages.map((m, i) => (
                 <div
                   key={i}
-                  className={`p-2 rounded-xl ${m.sender === "user" ? "bg-[#0F1E3D] text-white text-right" : "bg-slate-100 text-slate-800"}`}
+                  className={`p-2.5 rounded-xl ${
+                    m.sender === "user"
+                      ? "bg-[#0F1E3D] text-white text-right font-medium"
+                      : "bg-slate-100 text-slate-800"
+                  }`}
                 >
                   {m.text}
                 </div>
@@ -455,10 +703,10 @@ export default function StudentDashboard() {
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Type message..."
-                className="flex-1 text-xs border p-2 rounded-lg"
+                placeholder="Ask query..."
+                className="flex-1 text-xs border border-slate-200 p-2 rounded-lg outline-none focus:border-[#0F1E3D]"
               />
-              <button className="bg-[#B8842E] text-white px-3 py-1 rounded-lg text-xs font-bold">
+              <button className="bg-[#B8842E] text-white px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#a07226] transition">
                 Send
               </button>
             </form>

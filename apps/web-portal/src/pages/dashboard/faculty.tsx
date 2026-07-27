@@ -2,150 +2,222 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
-interface StudentRosterItem {
-  id: number;
-  name: string;
-  email: string;
-  grade: string;
-  paymentStatus: "Paid" | "Pending";
-  attendanceRate: string;
-  group: string;
-}
-
-interface ClassScheduleItem {
-  id: number;
-  title: string;
-  courseCode: string;
-  scheduledAt: string;
-  zoomUrl: string;
-  status: "Live" | "Upcoming" | "Completed";
-}
-
 export default function FacultyDashboard() {
   const router = useRouter();
   const [facultyUser, setFacultyUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
-    "classes" | "content" | "roster" | "support"
-  >("classes");
+    | "dashboard"
+    | "classes"
+    | "promos"
+    | "content"
+    | "assignments"
+    | "roster"
+    | "support"
+  >("dashboard");
+  const [targetGrade, setTargetGrade] = useState("Grade 10");
 
-  // Approval Status Badge
-  const [isApproved, setIsApproved] = useState(true);
+  const gradesList = [
+    "Grade 1",
+    "Grade 2",
+    "Grade 3",
+    "Grade 4",
+    "Grade 5",
+    "Grade 6",
+    "Grade 7",
+    "Grade 8",
+    "Grade 9",
+    "Grade 10",
+  ];
 
-  // Live Classes State
-  const [classes, setClasses] = useState<ClassScheduleItem[]>([
-    {
-      id: 1,
-      title: "10th Standard Mathematics — Geometry & Theorems",
-      courseCode: "MATH-10",
-      scheduledAt: "Today · 09:00 AM - 10:00 AM",
-      zoomUrl: "https://zoom.us/j/1234567890",
-      status: "Live",
-    },
-    {
-      id: 2,
-      title: "Physical Science Lab Operations & Quantum Physics",
-      courseCode: "SCI-10",
-      scheduledAt: "Tomorrow · 10:30 AM - 11:30 AM",
-      zoomUrl: "https://zoom.us/j/0987654321",
-      status: "Upcoming",
-    },
-  ]);
+  // FR-FAC-01 Verification Status
+  const [verificationStatus, setVerificationStatus] = useState("Active");
 
-  // Form State
+  // Stores
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [roster, setRoster] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+
+  // FR-FAC-02 Form States
   const [newTitle, setNewTitle] = useState("");
-  const [newCode, setNewCode] = useState("MATH-10");
-  const [newTime, setNewTime] = useState("");
+  const [newCode, setNewCode] = useState("MATH-1001");
   const [newZoom, setNewZoom] = useState("");
-
-  // Roster State
-  const [roster, setRoster] = useState<StudentRosterItem[]>([
-    {
-      id: 1,
-      name: "Rahul Sharma",
-      email: "rahul@student.com",
-      grade: "Class 10",
-      paymentStatus: "Paid",
-      attendanceRate: "94%",
-      group: "Advanced Mathematics",
-    },
-    {
-      id: 2,
-      name: "Ananya Patel",
-      email: "ananya@student.com",
-      grade: "Class 10",
-      paymentStatus: "Paid",
-      attendanceRate: "88%",
-      group: "Physics Lab A",
-    },
-    {
-      id: 3,
-      name: "Vikram Singh",
-      email: "vikram@student.com",
-      grade: "Class 10",
-      paymentStatus: "Pending",
-      attendanceRate: "72%",
-      group: "General Science",
-    },
-  ]);
-
-  // Content Upload State
-  const [contentTitle, setContentTitle] = useState("");
-  const [contentType, setContentType] = useState<"pdf" | "ppt" | "trailer">(
-    "pdf",
+  const [editingScheduleId, setEditingScheduleId] = useState<number | null>(
+    null,
   );
 
-  // Support Chat Log
+  // Material Form (Trailers, Syllabus, Promos)
+  const [matTitle, setMatTitle] = useState("");
+  const [matType, setMatType] = useState<"Trailer" | "Syllabus" | "Promo">(
+    "Trailer",
+  );
+  const [selectedMatFile, setSelectedMatFile] = useState<File | null>(null);
+
+  // E-Library State
+  const [contentTitle, setContentTitle] = useState("");
+  const [contentType, setContentType] = useState<"pdf" | "doc" | "ppt">("pdf");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Assignment / Grading State
+  const [assignTitle, setAssignTitle] = useState("");
+  const [testLink, setTestLink] = useState("");
+
+  // FR-FAC-04 Support Helpdesk State
   const [supportQuery, setSupportQuery] = useState("");
   const [supportLog, setSupportLog] = useState([
     {
-      sender: "system",
-      text: "Welcome to Faculty Tech Support. Need immediate assistance during your live broadcast?",
+      sender: "bot",
+      text: "Welcome to EV-Tech Bot Support! Need instant help during your live stream?",
     },
   ]);
 
   useEffect(() => {
+    fetchProfileStatus();
+  }, []);
+
+  useEffect(() => {
+    fetchSchedules();
+    fetchMaterials();
+    fetchRoster();
+    fetchAssignments();
+  }, [targetGrade]);
+
+  const fetchProfileStatus = async () => {
     try {
       const stored = localStorage.getItem("user");
-      if (stored) {
-        setFacultyUser(JSON.parse(stored));
-      } else {
-        setFacultyUser({
-          name: "Prof. R. Sharma",
-          email: "sharma@evidyalaya.com",
-          role: "faculty",
-        });
+      const user = stored
+        ? JSON.parse(stored)
+        : { name: "Prof. R. Sharma", email: "sharma@evidyalaya.com" };
+      setFacultyUser(user);
+
+      const res = await fetch(
+        `http://localhost:5000/faculty/profile/status?email=${encodeURIComponent(user.email)}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setVerificationStatus(data.verificationStatus || "Active");
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  const handleScheduleClass = (e: React.FormEvent) => {
+  const fetchSchedules = async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/faculty/schedules/all?grade=${encodeURIComponent(targetGrade)}`,
+      );
+      if (res.ok) setSchedules(await res.json());
+    } catch (e) {}
+  };
+
+  const fetchMaterials = async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/faculty/materials/all?grade=${encodeURIComponent(targetGrade)}`,
+      );
+      if (res.ok) setMaterials(await res.json());
+    } catch (e) {}
+  };
+
+  const fetchRoster = async () => {
+    try {
+      const res = await fetch(`http://localhost:5000/faculty/roster`);
+      if (res.ok) setRoster(await res.json());
+    } catch (e) {}
+  };
+
+  const fetchAssignments = async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/faculty/assignments?grade=${encodeURIComponent(targetGrade)}`,
+      );
+      if (res.ok) setAssignments(await res.json());
+    } catch (e) {}
+  };
+
+  // --- HANDLERS ---
+  const handleSaveSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle || !newZoom) return;
-
-    const newClassItem: ClassScheduleItem = {
-      id: Date.now(),
-      title: newTitle,
-      courseCode: newCode,
-      scheduledAt: newTime || "Scheduled Time",
-      zoomUrl: newZoom,
-      status: "Upcoming",
-    };
-
-    setClasses((prev) => [newClassItem, ...prev]);
+    if (editingScheduleId) {
+      await fetch(
+        `http://localhost:5000/faculty/schedules/${editingScheduleId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ zoomUrl: newZoom, dayOfWeek: "Monday" }),
+        },
+      );
+      setEditingScheduleId(null);
+    } else {
+      await fetch(`http://localhost:5000/faculty/schedules/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle,
+          courseCode: newCode,
+          gradeLevel: targetGrade,
+          zoomUrl: newZoom,
+        }),
+      });
+    }
     setNewTitle("");
     setNewZoom("");
-    setNewTime("");
+    fetchSchedules();
+  };
+
+  const handleDeleteSchedule = async (id: number) => {
+    if (confirm("Delete live session schedule?")) {
+      await fetch(`http://localhost:5000/faculty/schedules/${id}`, {
+        method: "DELETE",
+      });
+      fetchSchedules();
+    }
+  };
+
+  const handleMaterialUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!matTitle || !selectedMatFile) return alert("Select title and file!");
+
+    const formData = new FormData();
+    formData.append("title", matTitle);
+    formData.append("materialType", matType);
+    formData.append("gradeLevel", targetGrade);
+    formData.append("file", selectedMatFile);
+
+    await fetch("http://localhost:5000/faculty/materials/upload", {
+      method: "POST",
+      body: formData,
+    });
+    alert(`${matType} published successfully!`);
+    setMatTitle("");
+    setSelectedMatFile(null);
+    fetchMaterials();
+  };
+
+  const handleMapStudent = async (
+    id: number,
+    assignedGroup: string,
+    paymentStatus: string,
+  ) => {
+    await fetch(`http://localhost:5000/faculty/roster/${id}/map-group`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignedGroup, paymentStatus }),
+    });
+    alert("Student mapped to group!");
+    fetchRoster();
   };
 
   const handleSupportSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!supportQuery.trim()) return;
 
-    const query = supportQuery;
-    setSupportLog((prev) => [...prev, { sender: "faculty", text: query }]);
+    setSupportLog((prev) => [
+      ...prev,
+      { sender: "faculty", text: supportQuery },
+    ]);
     setSupportQuery("");
 
     setTimeout(() => {
@@ -153,19 +225,18 @@ export default function FacultyDashboard() {
         ...prev,
         {
           sender: "bot",
-          text: `Ticket #EV-SUP-${Math.floor(1000 + Math.random() * 9000)} generated. Support technician notified for your active session.`,
+          text: "Tech Assistant assigned. Priority response dispatched to your session email!",
         },
       ]);
     }, 400);
   };
 
-  if (loading) {
+  if (loading)
     return (
       <div className="min-h-screen bg-[#F4F6F9] flex items-center justify-center font-bold text-[#0F1E3D]">
-        Initializing Faculty Workspace...
+        Initializing Faculty Portal...
       </div>
     );
-  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-800 flex flex-col antialiased">
@@ -173,75 +244,110 @@ export default function FacultyDashboard() {
         <title>Faculty Portal — e-Vidyalaya</title>
       </Head>
 
-      {/* HEADER NAVBAR */}
+      {/* HEADER */}
       <header className="bg-[#0F1E3D] text-white px-6 py-3.5 flex justify-between items-center shadow-lg sticky top-0 z-50 border-b border-amber-500/20">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl border-2 border-[#B8842E] bg-[#16294C] flex items-center justify-center font-bold text-[#E7DCC4] text-sm shadow-inner">
+          <div className="w-9 h-9 rounded-xl border-2 border-[#B8842E] bg-[#16294C] flex items-center justify-center font-bold text-[#E7DCC4] text-sm">
             eV
           </div>
           <div>
-            <h1 className="font-serif font-bold text-base leading-tight text-white tracking-wide">
+            <h1 className="font-serif font-bold text-base text-white">
               e-Vidyalaya
             </h1>
-            <span className="text-[10px] text-amber-300/80 font-medium tracking-wider uppercase">
+            <span className="text-[10px] text-amber-300 uppercase tracking-wider font-semibold">
               Faculty Management Hub
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-3 py-1 rounded-full font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Verified Educator
-          </span>
+          <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
+            <span className="text-xs text-amber-300 font-bold">
+              Class View:
+            </span>
+            <select
+              value={targetGrade}
+              onChange={(e) => setTargetGrade(e.target.value)}
+              className="bg-[#0F1E3D] text-white text-xs font-bold px-2 py-0.5 rounded outline-none cursor-pointer"
+            >
+              {gradesList.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={() => {
               localStorage.clear();
               router.push("/");
             }}
-            className="text-xs font-bold bg-[#B8842E] hover:bg-[#a07226] text-white px-4 py-2 rounded-xl transition cursor-pointer shadow-md active:scale-95"
+            className="text-xs font-bold bg-[#B8842E] hover:bg-[#a07226] text-white px-4 py-2 rounded-xl cursor-pointer"
           >
             Logout
           </button>
         </div>
       </header>
 
-      {!isApproved && (
-        <div className="bg-amber-500 text-slate-900 px-6 py-2.5 text-xs font-bold flex justify-between items-center shadow-sm">
+      {/* FR-FAC-01 VERIFICATION ALERT BANNER */}
+      {verificationStatus !== "Active" && (
+        <div className="bg-amber-500 text-slate-900 px-6 py-2 text-xs font-bold flex justify-between items-center shadow-xs">
           <span>
-            ⚠️ Account Approval Pending: Content publishing is in preview mode
-            until admin verification.
+            ⚠️ Account Verification Pending: Content publishing is in preview
+            mode until admin onboarding approval.
           </span>
           <button
-            onClick={() => setIsApproved(true)}
+            onClick={() => setVerificationStatus("Active")}
             className="underline cursor-pointer"
           >
-            Simulate Admin Approval
+            Simulate Approval
           </button>
         </div>
       )}
 
-      {/* MAIN CONTAINER */}
+      {/* MAIN CONTAINER WITH LEFT SIDEBAR */}
       <div className="flex-1 flex max-w-[1600px] w-full mx-auto">
-        {/* SIDEBAR NAVIGATION */}
-        <aside className="w-72 bg-white border-r border-slate-200/80 p-5 hidden md:flex flex-col justify-between sticky top-[61px] h-[calc(100vh-61px)] shadow-sm">
+        {/* LEFT SIDEBAR NAVIGATION */}
+        <aside className="w-72 bg-white border-r border-slate-200/80 p-5 hidden md:flex flex-col justify-between sticky top-[61px] h-[calc(100vh-61px)] shadow-xs">
           <div className="space-y-2">
             <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Main Menu
+              Faculty Menu
             </div>
             {[
-              { id: "classes", label: "Live Classes & Timetable", icon: "📡" },
-              { id: "content", label: "Syllabus & Course Uploads", icon: "📤" },
-              { id: "roster", label: "Student Roster Analytics", icon: "📊" },
-              { id: "support", label: "Live Tech Helpdesk", icon: "💬" },
+              {
+                id: "dashboard",
+                label: "Dashboard & Launcher (FR-FAC-03)",
+                icon: "🎥",
+              },
+              {
+                id: "classes",
+                label: "Live Classes & Timetable (FR-FAC-02)",
+                icon: "📡",
+              },
+              {
+                id: "promos",
+                label: "Trailers & Syllabus (FR-FAC-02)",
+                icon: "🎬",
+              },
+              {
+                id: "roster",
+                label: "Roster Analytics & Mapping (FR-FAC-03)",
+                icon: "📊",
+              },
+              { id: "assignments", label: "Test Links & Grading", icon: "📝" },
+              {
+                id: "support",
+                label: "Live Support Portal (FR-FAC-04)",
+                icon: "💬",
+              },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeTab === tab.id
-                    ? "bg-[#0F1E3D] text-white shadow-md shadow-blue-950/20 translate-x-1"
-                    : "text-slate-600 hover:bg-slate-100/80 hover:text-[#0F1E3D]"
+                    ? "bg-[#0F1E3D] text-white shadow-md"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-[#0F1E3D]"
                 }`}
               >
                 <span className="text-base">{tab.icon}</span>
@@ -250,11 +356,14 @@ export default function FacultyDashboard() {
             ))}
           </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
             <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-              Educator Session
+              Verification Status
             </span>
-            <p className="text-xs font-bold text-[#0F1E3D] truncate">
+            <p className="text-xs font-bold text-[#0F1E3D] flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${verificationStatus === "Active" ? "bg-emerald-500" : "bg-amber-500"}`}
+              ></span>
               {facultyUser?.name}
             </p>
             <p className="text-[11px] text-slate-500 truncate">
@@ -263,186 +372,239 @@ export default function FacultyDashboard() {
           </div>
         </aside>
 
-        {/* CONTENT VIEWPORT */}
+        {/* MAIN VIEWPORT */}
         <main className="flex-1 p-6 md:p-8 space-y-8 overflow-y-auto">
-          {/* BANNER CARD */}
-          <div className="bg-gradient-to-r from-[#0F1E3D] via-[#16294C] to-[#0F1E3D] text-white p-6 md:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border border-slate-700/50">
-            <div className="space-y-2">
-              <span className="bg-[#B8842E]/30 text-amber-200 border border-[#B8842E]/50 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
-                Faculty Workspace
-              </span>
-              <h2 className="font-serif font-bold text-2xl md:text-3xl text-[#E7DCC4]">
-                Welcome back, {facultyUser?.name?.split(" ")[0] || "Professor"}!
-              </h2>
-              <p className="text-xs text-slate-300 max-w-xl">
-                Manage your scheduled live interactive broadcasts, review
-                student attendance rates, and publish class materials.
-              </p>
-            </div>
-
-            <div className="flex gap-3 bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/10">
-              <div className="text-center px-4 border-r border-white/20">
-                <span className="block text-xl font-black text-amber-300">
-                  2
-                </span>
-                <span className="text-[10px] text-slate-300 uppercase font-medium">
-                  Classes Today
-                </span>
-              </div>
-              <div className="text-center px-4">
-                <span className="block text-xl font-black text-emerald-400">
-                  94%
-                </span>
-                <span className="text-[10px] text-slate-300 uppercase font-medium">
-                  Avg Attendance
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* TAB 1: LIVE CLASSES & SCHEDULE */}
-          {activeTab === "classes" && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* SCHEDULER FORM */}
-              <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
-                <div className="border-b border-slate-100 pb-4">
-                  <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                    Schedule Live Class
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Publish new interactive Zoom links for students.
+          {/* TAB 1: FR-FAC-03 TEACHING SCHEDULE & LIVE CLASS LAUNCHER */}
+          {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-[#0F1E3D] via-[#16294C] to-[#0F1E3D] text-white p-6 rounded-3xl shadow-xl flex justify-between items-center">
+                <div>
+                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+                    Teaching Launcher
+                  </span>
+                  <h2 className="font-serif font-bold text-2xl text-[#E7DCC4] mt-2">
+                    Welcome, {facultyUser?.name}!
+                  </h2>
+                  <p className="text-xs text-slate-300">
+                    Target Grade:{" "}
+                    <span className="font-bold text-amber-300">
+                      {targetGrade}
+                    </span>
                   </p>
                 </div>
+                <div className="text-center bg-white/10 p-4 rounded-2xl border border-white/10">
+                  <span className="block text-2xl font-black text-amber-300">
+                    {schedules.length}
+                  </span>
+                  <span className="text-[10px] text-slate-300 uppercase font-bold">
+                    Upcoming Classes
+                  </span>
+                </div>
+              </div>
 
-                <form
-                  onSubmit={handleScheduleClass}
-                  className="space-y-4 text-xs"
-                >
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1.5">
-                      Class Title
-                    </label>
+              <div className="bg-white p-6 rounded-3xl border shadow-xs space-y-4">
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  🎥 Live Class Launcher ({targetGrade})
+                </h3>
+                <div className="space-y-3">
+                  {schedules.length === 0 ? (
+                    <p className="text-xs text-slate-500 py-4 text-center">
+                      No active class schedules found.
+                    </p>
+                  ) : (
+                    schedules.map((s) => (
+                      <div
+                        key={s.id}
+                        className="p-4 border rounded-2xl bg-slate-50 flex justify-between items-center text-xs"
+                      >
+                        <div>
+                          <span className="font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px]">
+                            {s.code || "LIVE"}
+                          </span>
+                          <h4 className="font-bold text-sm text-[#0F1E3D] mt-1">
+                            {s.title}
+                          </h4>
+                          <p className="text-slate-500">
+                            ⏰ {s.start_time} - {s.end_time} · {s.day_of_week}
+                          </p>
+                        </div>
+                        <a
+                          href={s.zoomUrl || s.meeting_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-[#0F1E3D] hover:bg-[#16294C] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                        >
+                          <span>Launch Zoom Broadcast</span> 🎥
+                        </a>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: FR-FAC-02 CREATE & SCHEDULE LIVE/RECURRING CLASSES */}
+          {activeTab === "classes" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <form
+                onSubmit={handleSaveSchedule}
+                className="bg-white p-6 rounded-3xl border shadow-xs space-y-4 text-xs"
+              >
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  {editingScheduleId
+                    ? "Edit Schedule"
+                    : "Create & Schedule Live Class"}
+                </h3>
+                {!editingScheduleId && (
+                  <>
                     <input
                       type="text"
-                      placeholder="e.g. 10th Math Polynomials & Algebra"
+                      placeholder="Title (e.g. Geometry & Theorems)"
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
                       required
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D] focus:ring-2 focus:ring-[#0F1E3D]/10 transition"
+                      className="w-full border p-3 rounded-xl"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1.5">
-                      Course Mapping
-                    </label>
-                    <select
-                      value={newCode}
-                      onChange={(e) => setNewCode(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D] bg-white"
-                    >
-                      <option value="MATH-10">
-                        MATH-10: 10th Standard Mathematics
-                      </option>
-                      <option value="SCI-10">
-                        SCI-10: Physical Science Lab
-                      </option>
-                      <option value="DEV-101">
-                        DEV-101: Full-Stack Web Development
-                      </option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1.5">
-                      Time Schedule
-                    </label>
                     <input
                       type="text"
-                      placeholder="e.g. Today · 02:00 PM - 03:00 PM"
-                      value={newTime}
-                      onChange={(e) => setNewTime(e.target.value)}
+                      placeholder="Course Code (e.g. MATH-1001)"
+                      value={newCode}
+                      onChange={(e) => setNewCode(e.target.value)}
                       required
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D]"
+                      className="w-full border p-3 rounded-xl font-mono"
                     />
-                  </div>
+                  </>
+                )}
+                <input
+                  type="url"
+                  placeholder="Zoom Meeting Room Link"
+                  value={newZoom}
+                  onChange={(e) => setNewZoom(e.target.value)}
+                  required
+                  className="w-full border p-3 rounded-xl font-mono"
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-[#0F1E3D] text-white font-bold py-3.5 rounded-2xl cursor-pointer"
+                >
+                  {editingScheduleId ? "Save Changes" : "Publish Schedule 📡"}
+                </button>
+              </form>
 
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1.5">
-                      Zoom Meeting Classroom URL
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://zoom.us/j/1234567890"
-                      value={newZoom}
-                      onChange={(e) => setNewZoom(e.target.value)}
-                      required
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D] font-mono text-[11px]"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-[#0F1E3D] hover:bg-[#16294C] text-white font-bold py-3.5 rounded-2xl transition cursor-pointer shadow-md active:scale-95 text-xs"
-                  >
-                    Publish Schedule 📡
-                  </button>
-                </form>
-              </div>
-
-              {/* SCHEDULE LIST */}
-              <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
-                <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                      Active Class Schedule
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Your upcoming and ongoing broadcast sessions.
-                    </p>
-                  </div>
-                  <span className="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-200">
-                    {classes.length} Sessions Active
-                  </span>
-                </div>
-
-                <div className="space-y-4">
-                  {classes.map((c) => (
+              <div className="lg:col-span-2 bg-white p-6 rounded-3xl border shadow-xs space-y-4">
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  Active Timetable Schedulers ({targetGrade})
+                </h3>
+                <div className="space-y-3">
+                  {schedules.map((s) => (
                     <div
-                      key={c.id}
-                      className="p-5 border border-slate-200/80 rounded-2xl bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-slate-300 transition"
+                      key={s.id}
+                      className="p-4 border rounded-2xl bg-slate-50 flex justify-between items-center text-xs"
                     >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold uppercase bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">
-                            {c.courseCode}
-                          </span>
-                          <span
-                            className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
-                              c.status === "Live"
-                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse"
-                                : "bg-blue-100 text-blue-800"
-                            }`}
-                          >
-                            ● {c.status}
-                          </span>
-                        </div>
-                        <h4 className="font-bold text-base text-[#0F1E3D]">
-                          {c.title}
+                      <div>
+                        <span className="font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px]">
+                          {s.code}
+                        </span>
+                        <h4 className="font-bold text-sm text-[#0F1E3D] mt-1">
+                          {s.title}
                         </h4>
-                        <p className="text-xs text-slate-500 flex items-center gap-1">
-                          <span>🕒</span> {c.scheduledAt}
+                        <p className="text-slate-500">
+                          ⏰ {s.start_time} - {s.end_time} · {s.day_of_week}
                         </p>
                       </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingScheduleId(s.id);
+                            setNewZoom(s.zoomUrl || s.meeting_link);
+                          }}
+                          className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-xl cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSchedule(s.id)}
+                          className="bg-red-600 text-white font-bold px-3 py-1.5 rounded-xl cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
+          {/* TAB 3: FR-FAC-02 CLASS TRAILERS, SYLLABUS & PROMO MATERIALS */}
+          {activeTab === "promos" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <form
+                onSubmit={handleMaterialUpload}
+                className="bg-white p-6 rounded-3xl border shadow-xs space-y-4 text-xs"
+              >
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  Upload Class Trailer or Syllabus
+                </h3>
+                <select
+                  value={matType}
+                  onChange={(e) => setMatType(e.target.value as any)}
+                  className="w-full border p-3 rounded-xl font-bold bg-white"
+                >
+                  <option value="Trailer">🎬 Class Trailer Video</option>
+                  <option value="Syllabus">📄 Syllabus Material</option>
+                  <option value="Promo">🎥 Promotional Sample</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Material Title"
+                  value={matTitle}
+                  onChange={(e) => setMatTitle(e.target.value)}
+                  required
+                  className="w-full border p-3 rounded-xl"
+                />
+                <input
+                  type="file"
+                  onChange={(e) =>
+                    setSelectedMatFile(e.target.files?.[0] || null)
+                  }
+                  required
+                  className="w-full border p-3 rounded-xl bg-slate-50"
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-[#B8842E] text-white font-bold py-3.5 rounded-2xl cursor-pointer"
+                >
+                  Publish Material 🎬
+                </button>
+              </form>
+
+              <div className="lg:col-span-2 bg-white p-6 rounded-3xl border shadow-xs space-y-3">
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  Published Trailers & Syllabus Documents
+                </h3>
+                <div className="space-y-2">
+                  {materials.map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-4 border rounded-2xl bg-slate-50 flex justify-between items-center text-xs"
+                    >
+                      <div>
+                        <span className="font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-[10px] uppercase">
+                          {m.material_type}
+                        </span>
+                        <h4 className="font-bold text-[#0F1E3D] mt-1">
+                          {m.title}
+                        </h4>
+                      </div>
                       <a
-                        href={c.zoomUrl}
+                        href={m.file_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="bg-[#0F1E3D] hover:bg-[#16294C] text-white text-xs font-bold px-5 py-3 rounded-xl transition shadow-md flex items-center gap-2 whitespace-nowrap active:scale-95"
+                        className="bg-[#0F1E3D] text-white font-bold px-3 py-1.5 rounded-xl cursor-pointer"
                       >
-                        <span>Launch Zoom Room</span>
-                        <span>🎥</span>
+                        View Material 🔗
                       </a>
                     </div>
                   ))}
@@ -451,147 +613,60 @@ export default function FacultyDashboard() {
             </div>
           )}
 
-          {/* TAB 2: CONTENT UPLOADS */}
-          {activeTab === "content" && (
-            <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6 max-w-3xl">
-              <div className="border-b border-slate-100 pb-4">
-                <h3 className="font-serif font-bold text-xl text-[#0F1E3D]">
-                  Upload Materials & Class Preview Trailers
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Publish lecture slides, notes, or promotional preview videos
-                  to the E-Library.
-                </p>
-              </div>
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  alert(
-                    `Successfully uploaded "${contentTitle}" to student portal!`,
-                  );
-                  setContentTitle("");
-                }}
-                className="space-y-4 text-xs"
-              >
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5">
-                    Document / Video Title
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Chapter 4 Integration Formula Notes"
-                    value={contentTitle}
-                    onChange={(e) => setContentTitle(e.target.value)}
-                    required
-                    className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5">
-                    Resource Type
-                  </label>
-                  <select
-                    value={contentType}
-                    onChange={(e) => setContentType(e.target.value as any)}
-                    className="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D] bg-white"
-                  >
-                    <option value="pdf">📕 PDF Lecture Notes</option>
-                    <option value="ppt">📊 PPT Slide Deck</option>
-                    <option value="trailer">🎥 Preview Video Trailer</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5">
-                    Select File (PDF / PPTX / MP4)
-                  </label>
-                  <input
-                    type="file"
-                    required
-                    className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 cursor-pointer text-xs"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="bg-[#B8842E] hover:bg-[#a07226] text-white text-xs font-bold px-8 py-3.5 rounded-2xl transition shadow-md active:scale-95"
-                >
-                  Upload & Sync 📂
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* TAB 3: ROSTER ANALYTICS */}
+          {/* TAB 4: FR-FAC-03 ROSTER ANALYTICS & INTEREST GROUP MAPPING */}
           {activeTab === "roster" && (
-            <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
-              <div className="border-b border-slate-100 pb-4 flex justify-between items-center">
-                <div>
-                  <h3 className="font-serif font-bold text-xl text-[#0F1E3D]">
-                    Student Roster & Interest Group Mapping
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Manage enrolled student profiles, attendance metrics, and
-                    custom study groups.
-                  </p>
-                </div>
-              </div>
-
+            <div className="bg-white p-6 rounded-3xl border shadow-xs space-y-4">
+              <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                Student Roster Analytics & Mapping (FR-FAC-03)
+              </h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-50 uppercase text-[10px] font-bold text-slate-400 border-b">
+                <table className="w-full text-left text-xs border border-slate-200">
+                  <thead className="bg-slate-50 font-bold uppercase text-[10px] text-slate-500">
                     <tr>
-                      <th className="p-4">Student Profile</th>
-                      <th className="p-4">Grade</th>
-                      <th className="p-4">Fee Status</th>
-                      <th className="p-4">Attendance</th>
-                      <th className="p-4">Assigned Interest Group</th>
+                      <th className="p-3">Student Name</th>
+                      <th className="p-3">Grade</th>
+                      <th className="p-3">Payment Status</th>
+                      <th className="p-3">Attendance Rate</th>
+                      <th className="p-3">Mapped Interest Group</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y">
                     {roster.map((s) => (
-                      <tr
-                        key={s.id}
-                        className="hover:bg-slate-50/80 transition"
-                      >
-                        <td className="p-4 font-bold text-slate-800">
+                      <tr key={s.id} className="hover:bg-slate-50">
+                        <td className="p-3 font-bold">
                           {s.name}
-                          <span className="block text-[10px] text-slate-400 font-normal">
+                          <br />
+                          <span className="text-[10px] text-slate-400 font-normal">
                             {s.email}
                           </span>
                         </td>
-                        <td className="p-4">{s.grade}</td>
-                        <td className="p-4">
+                        <td className="p-3 font-bold">
+                          {s.grade_level || s.grade}
+                        </td>
+                        <td className="p-3">
                           <span
-                            className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                              s.paymentStatus === "Paid"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${s.payment_status === "Paid" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
                           >
-                            {s.paymentStatus}
+                            {s.payment_status || "Paid"}
                           </span>
                         </td>
-                        <td className="p-4 font-mono font-bold text-slate-800">
-                          {s.attendanceRate}
+                        <td className="p-3 font-mono font-bold text-slate-800">
+                          {s.attendance_rate || "92%"}
                         </td>
-                        <td className="p-4">
+                        <td className="p-3">
                           <input
                             type="text"
-                            value={s.group}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setRoster((prev) =>
-                                prev.map((item) =>
-                                  item.id === s.id
-                                    ? { ...item, group: val }
-                                    : item,
-                                ),
-                              );
-                            }}
-                            className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[#0F1E3D]"
+                            defaultValue={
+                              s.assigned_group || s.assignedGroup || "General"
+                            }
+                            onBlur={(e) =>
+                              handleMapStudent(
+                                s.id,
+                                e.target.value,
+                                s.payment_status || "Paid",
+                              )
+                            }
+                            className="border p-1.5 rounded-lg text-xs font-bold outline-none focus:border-[#0F1E3D]"
                           />
                         </td>
                       </tr>
@@ -602,30 +677,61 @@ export default function FacultyDashboard() {
             </div>
           )}
 
-          {/* TAB 4: HELPDESK */}
+          {/* TAB 5: TESTS & MARKS GRADING */}
+          {activeTab === "assignments" && (
+            <div className="bg-white p-6 rounded-3xl border shadow-xs space-y-4">
+              <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                Assignments Directory ({targetGrade})
+              </h3>
+              <div className="space-y-3">
+                {assignments.map((a) => (
+                  <div
+                    key={a.id}
+                    className="p-4 border rounded-2xl bg-slate-50 flex justify-between items-center text-xs"
+                  >
+                    <div>
+                      <h4 className="font-bold text-sm text-[#0F1E3D]">
+                        {a.title}
+                      </h4>
+                      <p className="text-slate-500 mt-0.5">Due: {a.due_date}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <a
+                        href={a.test_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-blue-600 text-white font-bold px-3 py-1.5 rounded-xl"
+                      >
+                        Open Test 🔗
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: FR-FAC-04 DEDICATED SUPPORT ACCESS (BOT / HELPDESK) */}
           {activeTab === "support" && (
-            <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6 max-w-2xl">
+            <div className="bg-white p-6 md:p-8 rounded-3xl border shadow-xs max-w-2xl space-y-4 text-xs">
               <div>
                 <h3 className="font-serif font-bold text-xl text-[#0F1E3D]">
-                  Live Broadcast Tech Helpdesk
+                  Dedicated Live Support Contact Portal (FR-FAC-04)
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Need help with screen share, Zoom SDK key, or audio streaming?
+                <p className="text-slate-500 mt-1">
+                  Get immediate technical assistance for stream latency, Zoom
+                  SDK authentication, or screen share issues.
                 </p>
               </div>
 
-              <div className="h-64 border border-slate-200 rounded-2xl p-4 bg-slate-50/50 overflow-y-auto space-y-3 text-xs">
+              <div className="h-60 border p-4 rounded-2xl bg-slate-50 overflow-y-auto space-y-2">
                 {supportLog.map((log, idx) => (
                   <div
                     key={idx}
                     className={`flex ${log.sender === "faculty" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[85%] p-3.5 rounded-2xl shadow-sm ${
-                        log.sender === "faculty"
-                          ? "bg-[#0F1E3D] text-white rounded-br-none"
-                          : "bg-white text-slate-800 border border-slate-200 rounded-bl-none"
-                      }`}
+                      className={`max-w-[80%] p-3 rounded-2xl shadow-xs ${log.sender === "faculty" ? "bg-[#0F1E3D] text-white" : "bg-white border border-slate-200 text-slate-800"}`}
                     >
                       {log.text}
                     </div>
@@ -633,22 +739,19 @@ export default function FacultyDashboard() {
                 ))}
               </div>
 
-              <form
-                onSubmit={handleSupportSubmit}
-                className="flex gap-2 text-xs"
-              >
+              <form onSubmit={handleSupportSubmit} className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Ask a question or report a stream issue..."
+                  placeholder="Describe your live broadcast technical issue..."
                   value={supportQuery}
                   onChange={(e) => setSupportQuery(e.target.value)}
-                  className="flex-1 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-[#0F1E3D]"
+                  className="flex-1 border p-3 rounded-xl outline-none focus:border-[#0F1E3D]"
                 />
                 <button
                   type="submit"
-                  className="bg-[#B8842E] hover:bg-[#a07226] text-white font-bold px-6 py-3 rounded-xl transition cursor-pointer"
+                  className="bg-[#B8842E] hover:bg-[#a07226] text-white font-bold px-6 py-3 rounded-xl cursor-pointer"
                 >
-                  Send
+                  Send Assistance Request
                 </button>
               </form>
             </div>
