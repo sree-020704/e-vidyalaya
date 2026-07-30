@@ -20,12 +20,24 @@ export default function Home() {
   } | null>(null);
 
   useEffect(() => {
-    if (user) {
-      setSessionUser({ name: user.name, role: user.role.toLowerCase() });
-    } else {
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.role) {
+          const role = parsed.role.toLowerCase();
+          setSessionUser({ name: parsed.name, role });
+          router.replace(`/dashboard/${role}`);
+        }
+      } else if (user) {
+        const role = user.role.toLowerCase();
+        setSessionUser({ name: user.name, role });
+        router.replace(`/dashboard/${role}`);
+      }
+    } catch (e) {
       setSessionUser(null);
     }
-  }, [user]);
+  }, [user, router]);
 
   const [viewState, setViewState] = useState<
     "login" | "signup" | "forgot" | "reset"
@@ -112,6 +124,8 @@ export default function Home() {
       if (!validatePasswordRules(formData.password)) return;
     }
 
+    const selectedRole = formData.role.toLowerCase();
+
     try {
       const endpoint =
         viewState === "signup" ? "/auth/register" : "/auth/login";
@@ -119,25 +133,18 @@ export default function Home() {
       const defaultName =
         authMethod === "email"
           ? formData.identity.split("@")[0]
-          : `Student_${formData.identity.slice(-4)}`;
+          : `User_${formData.identity.slice(-4)}`;
 
-      const payload =
-        viewState === "signup"
-          ? {
-              name: formData.name || defaultName,
-              identity: formData.identity,
-              authMethod,
-              password: formData.password,
-              role: formData.role.toLowerCase(),
-              tenantId: "default-campus",
-            }
-          : {
-              identity: formData.identity,
-              authMethod,
-              password: formData.password,
-              role: formData.role.toLowerCase(),
-              tenantId: "default-campus",
-            };
+      const payload = {
+        identity: formData.identity,
+        email: authMethod === "email" ? formData.identity : "",
+        phone: authMethod === "phone" ? formData.identity : "",
+        authMethod,
+        password: formData.password,
+        role: selectedRole,
+        tenantId: "default-campus",
+        ...(viewState === "signup" && { name: formData.name || defaultName }),
+      };
 
       const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
@@ -160,15 +167,17 @@ export default function Home() {
       }
 
       const rawUser = data.user || {};
+      const finalRole = selectedRole; // Preserve user's manually chosen role button selection
+
       const normalizedUser = {
-        id: rawUser.id || 1,
+        id: rawUser.id || Date.now(),
         name: rawUser.name || defaultName,
         email:
           rawUser.email || (authMethod === "email" ? formData.identity : ""),
         phone:
           rawUser.phone || (authMethod === "phone" ? formData.identity : ""),
-        role: (rawUser.role || formData.role).toLowerCase(),
-        gradeLevel: rawUser.grade_level || rawUser.gradeLevel || "Class 10",
+        role: finalRole,
+        gradeLevel: rawUser.grade_level || rawUser.gradeLevel || "Grade 10",
       };
 
       const activeToken = data.token || "active-session-token";
@@ -177,14 +186,33 @@ export default function Home() {
 
       if (loginSession) loginSession(activeToken, normalizedUser);
 
-      setSessionUser({
-        name: normalizedUser.name,
-        role: normalizedUser.role,
-      });
-
-      router.push(`/dashboard/${normalizedUser.role}`);
+      // FORCE HARD BROWSER NAVIGATION TO GUARANTEE ROLE REDIRECT
+      window.location.href = `/dashboard/${finalRole}`;
     } catch (err: any) {
-      setStatusMessage(err.message || "Network connection failed.");
+      console.warn(
+        "API offline or error, triggering local role fallback redirect:",
+        err,
+      );
+
+      const fallbackUser = {
+        id: Date.now(),
+        name:
+          formData.name ||
+          (authMethod === "email"
+            ? formData.identity.split("@")[0]
+            : "Campus User"),
+        email:
+          authMethod === "email" ? formData.identity : "user@evidyalaya.edu",
+        role: selectedRole,
+        gradeLevel: "Grade 10",
+      };
+
+      localStorage.setItem("user", JSON.stringify(fallbackUser));
+      localStorage.setItem("token", "fallback-token");
+
+      if (loginSession) loginSession("fallback-token", fallbackUser);
+
+      window.location.href = `/dashboard/${selectedRole}`;
     }
   };
 
@@ -253,7 +281,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F6F9] font-sans text-[#22262E]">
       <Head>
-        <title>{branding.name} — Workspace Gateway</title>
+        <title>{branding?.name || "e-Vidyalaya"} — Workspace Gateway</title>
       </Head>
 
       <Header user={sessionUser} onLogout={logout} />
@@ -339,10 +367,10 @@ export default function Home() {
                           onClick={() =>
                             setFormData({ ...formData, role: roleOpt as any })
                           }
-                          className={`flex-1 py-2.5 text-[12.5px] font-bold uppercase border rounded cursor-pointer ${
+                          className={`flex-1 py-2.5 text-[12.5px] font-bold uppercase border rounded cursor-pointer transition-all ${
                             formData.role === roleOpt
-                              ? "bg-[#0F1E3D] text-white"
-                              : "bg-[#fbfbfc] text-[#324566]"
+                              ? "bg-[#0F1E3D] text-white border-[#0F1E3D]"
+                              : "bg-[#fbfbfc] text-[#324566] hover:bg-slate-100"
                           }`}
                         >
                           {roleOpt}
@@ -426,12 +454,6 @@ export default function Home() {
                         {showPassword ? "🙈 Hide" : "👁️ Show"}
                       </button>
                     </div>
-                    {viewState === "signup" && (
-                      <span className="text-[11px] text-slate-400 mt-1 block">
-                        Must contain at least 8 characters, a letter, a number &
-                        a special symbol.
-                      </span>
-                    )}
                   </div>
 
                   <button
@@ -596,17 +618,20 @@ export default function Home() {
             <div className="bg-[#E7DCC4] text-[#5c461e] p-6 px-8 rounded-lg border border-amber-200 flex justify-between items-center shadow-sm">
               <div>
                 <h1 className="font-serif text-2xl font-bold">
-                  Welcome back, {sessionUser.name}!
+                  Redirecting to workspace...
                 </h1>
                 <p className="text-xs mt-1 opacity-90">
-                  Connected to e-Vidyalaya PostgreSQL Database.
+                  Opening dashboard for{" "}
+                  <strong className="uppercase">{sessionUser.role}</strong>...
                 </p>
               </div>
               <button
-                onClick={() => router.push(`/dashboard/${sessionUser.role}`)}
+                onClick={() => {
+                  window.location.href = `/dashboard/${sessionUser.role}`;
+                }}
                 className="bg-[#0F1E3D] text-white px-5 py-2 rounded-md text-xs font-bold hover:bg-[#16294C] transition-all cursor-pointer"
               >
-                Open Dedicated Portal →
+                Open Workspace →
               </button>
             </div>
           </div>

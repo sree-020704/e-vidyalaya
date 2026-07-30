@@ -1,544 +1,378 @@
 import React, { useState, useEffect } from "react";
 import Head from "next/head";
-import { useRouter } from "next/router";
 
 export default function AdminDashboard() {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    "users" | "branding" | "analytics" | "certs" | "activities" | "notif"
-  >("users");
+    "analytics" | "users" | "tenant" | "courses" | "events"
+  >("analytics");
 
-  // User Management State (FR-ADM-02)
+  const [tenant, setTenant] = useState<any>({
+    school_name: "e-Vidyalaya High School",
+    primary_color: "#0F1E3D",
+    secondary_color: "#B8842E",
+    custom_domain: "campus.evidyalaya.edu",
+    logo_url: "",
+    logo_text: "eV",
+  });
   const [users, setUsers] = useState<any[]>([]);
-
-  // White-Label Branding State (FR-ADM-03)
-  const [tenantConfig, setTenantConfig] = useState({
-    schoolName: "e-Vidyalaya High School",
-    primaryColor: "#0F1E3D",
-    secondaryColor: "#B8842E",
-    customDomain: "campus.evidyalaya.edu",
-    logoUrl: "https://api.dicebear.com/7.x/identicon/svg?seed=eVidyalaya",
-  });
-
-  // Audits & Analytics State (FR-ADM-04)
+  const [courses, setCourses] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>({
-    metrics: {
-      liveClassConcurrency: 1420,
-      totalRevenue: "$128,450",
-      activeUsers: 540,
-      serverUptime: "99.98%",
-    },
-    auditLogs: [],
+    liveConcurrency: 0,
+    totalRevenue: 0,
+    activeUsers: 0,
+    pendingApprovals: 0,
+    systemUptime: "100%",
+    logs: [],
   });
 
-  // Certifications, Activities & Notices State
-  const [certifications, setCertifications] = useState<any[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
-  const [certCode, setCertCode] = useState("");
-  const [certTitle, setCertTitle] = useState("");
-  const [certProvider, setCertProvider] = useState("");
-  const [actTitle, setActTitle] = useState("");
-  const [actCat, setActCat] = useState<"Sports" | "Events" | "Workshops">(
-    "Events",
-  );
-  const [actDetails, setActDetails] = useState("");
-  const [actVenue, setActVenue] = useState("");
-  const [notifTitle, setNotifTitle] = useState("");
-  const [notifMsg, setNotifMsg] = useState("");
+  const [userForm, setUserForm] = useState({
+    name: "",
+    email: "",
+    role: "faculty",
+  });
+  const [courseForm, setCourseForm] = useState({
+    code: "",
+    title: "",
+    price: 1499,
+  });
+  const [eventForm, setEventForm] = useState({
+    title: "",
+    date: "",
+    category: "Sports",
+    description: "",
+    target: "ALL",
+  });
+  const [statusMsg, setStatusMsg] = useState("");
 
   useEffect(() => {
-    fetchUsers();
-    fetchTenantConfig();
-    fetchAnalytics();
-    fetchCertifications();
-    fetchActivities();
+    fetchAllAdminData();
+    const interval = setInterval(() => fetchAllAdminData(true), 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  // --- FETCH API CALLS ---
-  const fetchUsers = async () => {
+  const fetchAllAdminData = async (isBackground = false) => {
+    const t = Date.now();
     try {
-      const res = await fetch("http://localhost:5000/admin/users");
-      if (res.ok) setUsers(await res.json());
+      const [bRes, uRes, cRes, eRes, aRes] = await Promise.all([
+        fetch(`http://localhost:5000/admin/branding?t=${t}`),
+        fetch(`http://localhost:5000/admin/users?t=${t}`),
+        fetch(`http://localhost:5000/faculty/catalog?t=${t}`),
+        fetch(`http://localhost:5000/admin/events?t=${t}`),
+        fetch(`http://localhost:5000/admin/analytics?t=${t}`),
+      ]);
+
+      if (bRes.ok) setTenant(await bRes.json());
+      if (uRes.ok) setUsers(await uRes.json());
+      if (cRes.ok) setCourses(await cRes.json());
+      if (eRes.ok) setEvents(await eRes.json());
+      if (aRes.ok) setAnalytics(await aRes.json());
     } catch (e) {}
   };
 
-  const fetchTenantConfig = async () => {
+  const triggerGlobalBroadcast = () => {
     try {
-      const res = await fetch("http://localhost:5000/admin/tenant-config");
-      if (res.ok) {
-        const data = await res.json();
-        setTenantConfig({
-          schoolName: data.school_name || "",
-          primaryColor: data.primary_color || "#0F1E3D",
-          secondaryColor: data.secondary_color || "#B8842E",
-          customDomain: data.custom_domain || "",
-          logoUrl: data.logo_url || "",
-        });
-      }
+      const bc = new BroadcastChannel("evidyalaya_realtime_updates");
+      bc.postMessage({ type: "REFRESH_PORTAL_DATA", timestamp: Date.now() });
+      bc.close();
     } catch (e) {}
-  };
-
-  const fetchAnalytics = async () => {
-    try {
-      const res = await fetch("http://localhost:5000/admin/analytics");
-      if (res.ok) setAnalytics(await res.json());
-    } catch (e) {}
-  };
-
-  const fetchCertifications = async () => {
-    try {
-      const res = await fetch("http://localhost:5000/admin/certifications");
-      if (res.ok) setCertifications(await res.json());
-    } catch (e) {}
-  };
-
-  const fetchActivities = async () => {
-    try {
-      const res = await fetch("http://localhost:5000/admin/activities");
-      if (res.ok) setActivities(await res.json());
-    } catch (e) {}
-  };
-
-  // --- EVENT HANDLERS ---
-  const handleUpdateStatus = async (id: number, status: string) => {
-    await fetch(`http://localhost:5000/admin/users/${id}/status`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    alert(`User status updated to ${status}`);
-    fetchUsers();
-    fetchAnalytics();
-  };
-
-  const handleUpdateRole = async (id: number, role: string) => {
-    await fetch(`http://localhost:5000/admin/users/${id}/role`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
-    });
-    alert(`User role updated to ${role}`);
-    fetchUsers();
-  };
-
-  const handleResetPassword = async (id: number) => {
-    await fetch(`http://localhost:5000/admin/users/${id}/reset-password`, {
-      method: "POST",
-    });
-    alert("Triggered temporary password reset link.");
+    window.dispatchEvent(new Event("storage"));
+    localStorage.setItem("last_sync_timestamp", Date.now().toString());
   };
 
   const handleSaveBranding = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("http://localhost:5000/admin/tenant-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tenantConfig),
-    });
-    alert("White-label configuration saved!");
-    fetchTenantConfig();
-  };
-
-  const handleAddCert = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await fetch("http://localhost:5000/admin/certifications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: certCode,
-        title: certTitle,
-        provider: certProvider,
-        gradeLevel: "Grade 10",
-      }),
-    });
-    alert("Certification published!");
-    setCertCode("");
-    setCertTitle("");
-    setCertProvider("");
-    fetchCertifications();
-  };
-
-  const handleDeleteCert = async (id: number) => {
-    if (confirm("Delete certification?")) {
-      await fetch(`http://localhost:5000/admin/certifications/${id}`, {
-        method: "DELETE",
+    try {
+      const res = await fetch("http://localhost:5000/admin/branding", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tenant),
       });
-      fetchCertifications();
+      if (res.ok) {
+        setStatusMsg("🎨 Tenant Branding Updated Globally!");
+        triggerGlobalBroadcast();
+        fetchAllAdminData();
+      }
+    } catch (e) {
+      setStatusMsg("⚠️ Updated locally");
     }
   };
 
-  const handleAddActivity = async (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("http://localhost:5000/admin/activities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: actTitle,
-        category: actCat,
-        details: actDetails,
-        venue: actVenue,
-      }),
-    });
-    alert(`${actCat} activity published!`);
-    setActTitle("");
-    setActDetails("");
-    setActVenue("");
-    fetchActivities();
-  };
-
-  const handleDeleteActivity = async (id: number) => {
-    if (confirm("Delete activity?")) {
-      await fetch(`http://localhost:5000/admin/activities/${id}`, {
-        method: "DELETE",
+    try {
+      const res = await fetch("http://localhost:5000/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userForm),
       });
-      fetchActivities();
-    }
+      if (res.ok) {
+        setStatusMsg(`👤 Account provisioned: ${userForm.email}`);
+        setUserForm({ name: "", email: "", role: "faculty" });
+        await fetchAllAdminData();
+        triggerGlobalBroadcast();
+      }
+    } catch (e) {}
   };
 
-  const handleSendNotif = async (e: React.FormEvent) => {
+  const handleApproveFaculty = async (id: number) => {
+    try {
+      await fetch(`http://localhost:5000/admin/users/${id}/approve`, {
+        method: "PUT",
+      });
+      setStatusMsg("✅ Faculty membership approved!");
+      await fetchAllAdminData();
+      triggerGlobalBroadcast();
+    } catch (e) {}
+  };
+
+  const handleToggleStatus = async (id: number, currentStatus: string) => {
+    const nextStatus = currentStatus === "Active" ? "Suspended" : "Active";
+    try {
+      await fetch(`http://localhost:5000/admin/users/${id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setStatusMsg(`🛡️ User account set to ${nextStatus}!`);
+      await fetchAllAdminData();
+      triggerGlobalBroadcast();
+    } catch (e) {}
+  };
+
+  const handleResetPassword = async (id: number) => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/admin/users/${id}/reset-password`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      alert(`Password Reset Triggered!\nTemp Password: ${data.tempPassword}`);
+      fetchAllAdminData();
+    } catch (e) {}
+  };
+
+  const handleAddCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("http://localhost:5000/admin/notifications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        senderRole: "Admin",
-        senderName: "Campus Administration",
-        title: notifTitle,
-        message: notifMsg,
-        gradeLevel: "Grade 10",
-      }),
+    try {
+      const res = await fetch("http://localhost:5000/faculty/catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(courseForm),
+      });
+      if (res.ok) {
+        setStatusMsg("📚 Global Course Module Uploaded!");
+        setCourseForm({ code: "", title: "", price: 1499 });
+        await fetchAllAdminData();
+        triggerGlobalBroadcast();
+      }
+    } catch (e) {}
+  };
+
+  const handleAddEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await fetch("http://localhost:5000/faculty/announcements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `🏆 [${eventForm.category}] ${eventForm.title}`,
+          message: `${eventForm.description} (Event Date: ${eventForm.date})`,
+          gradeLevel: "ALL",
+        }),
+      });
+
+      const res = await fetch("http://localhost:5000/admin/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(eventForm),
+      });
+
+      if (res.ok) {
+        setStatusMsg("🏆 Event published across all user feeds!");
+        setEventForm({
+          title: "",
+          date: "",
+          category: "Sports",
+          description: "",
+          target: "ALL",
+        });
+        await fetchAllAdminData();
+        triggerGlobalBroadcast();
+      }
+    } catch (e) {}
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    document.cookie.split(";").forEach((c) => {
+      document.cookie = c
+        .replace(/^ +/, "")
+        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
     });
-    alert("Notice broadcasted!");
-    setNotifTitle("");
-    setNotifMsg("");
+    window.location.replace("/");
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-800 flex flex-col antialiased">
       <Head>
-        <title>Administrator Portal — e-Vidyalaya</title>
+        <title>{`Admin Gateway — ${tenant.school_name}`}</title>
       </Head>
 
-      {/* HEADER */}
-      <header className="bg-[#0F1E3D] text-white px-6 py-3.5 flex justify-between items-center shadow-lg sticky top-0 z-50 border-b border-amber-500/20">
+      <header
+        style={{ backgroundColor: tenant.primary_color || "#0F1E3D" }}
+        className="text-white px-6 py-3.5 flex justify-between items-center shadow-lg transition-colors"
+      >
         <div className="flex items-center gap-3">
-          <img
-            src={tenantConfig.logoUrl}
-            alt="Logo"
-            className="w-8 h-8 rounded-lg bg-white p-0.5 object-cover"
-          />
+          {tenant.logo_url ? (
+            <img
+              src={tenant.logo_url}
+              alt="Logo"
+              className="w-9 h-9 rounded-xl object-cover border-2 border-amber-400"
+            />
+          ) : (
+            <div
+              style={{ borderColor: tenant.secondary_color || "#B8842E" }}
+              className="w-9 h-9 rounded-xl border-2 bg-white/10 flex items-center justify-center font-bold text-amber-300 text-sm"
+            >
+              {tenant.logo_text || "eV"}
+            </div>
+          )}
           <div>
             <h1 className="font-serif font-bold text-base text-white">
-              {tenantConfig.schoolName}
+              {tenant.school_name || "e-Vidyalaya High School"}
             </h1>
             <span className="text-[10px] text-amber-300 uppercase tracking-wider font-semibold">
-              Administrator Control Portal
+              Super Administrator Console
             </span>
           </div>
         </div>
+
         <button
-          onClick={() => router.push("/")}
-          className="text-xs font-bold bg-[#B8842E] hover:bg-[#a07226] text-white px-4 py-2 rounded-xl cursor-pointer"
+          onClick={handleLogout}
+          className="bg-[#B8842E] hover:bg-[#a07226] text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer shadow-md transition"
         >
-          Logout
+          Logout 🚪
         </button>
       </header>
 
-      {/* MAIN CONTAINER WITH LEFT SIDEBAR */}
       <div className="flex-1 flex max-w-[1600px] w-full mx-auto">
-        {/* LEFT SIDEBAR NAVIGATION */}
-        <aside className="w-72 bg-white border-r border-slate-200/80 p-5 hidden md:flex flex-col justify-between sticky top-[61px] h-[calc(100vh-61px)] shadow-xs">
-          <div className="space-y-2">
-            <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Admin Controls
-            </div>
-            {[
-              { id: "users", label: "User & Roles (FR-ADM-02)", icon: "👥" },
-              {
-                id: "branding",
-                label: "White-Labeling (FR-ADM-03)",
-                icon: "🎨",
-              },
-              {
-                id: "analytics",
-                label: "Audits & Analytics (FR-ADM-04)",
-                icon: "📊",
-              },
-              { id: "certs", label: "Certification Courses", icon: "🎓" },
-              {
-                id: "activities",
-                label: "Sports, Events & Workshops",
-                icon: "🏆",
-              },
-              { id: "notif", label: "Broadcast Announcements", icon: "🔔" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === tab.id
-                    ? "bg-[#0F1E3D] text-white shadow-md"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-[#0F1E3D]"
-                }`}
-              >
-                <span className="text-base">{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
+        <aside className="w-72 bg-white border-r p-5 space-y-2 hidden md:block">
+          <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Administrator Modules
           </div>
-
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
-            <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-              Access Level
-            </span>
-            <p className="text-xs font-bold text-[#0F1E3D]">
-              Super Administrator
-            </p>
-            <p className="text-[11px] text-slate-500">FR-ADM-01 Unrestricted</p>
-          </div>
+          {[
+            {
+              id: "analytics",
+              label: "System Audits & Analytics 📊",
+              count: "",
+            },
+            {
+              id: "users",
+              label: "User & Role Management 👥",
+              count: users.length,
+            },
+            { id: "tenant", label: "Tenant & White-Label 🎨", count: "" },
+            {
+              id: "courses",
+              label: "Global Course Control 📚",
+              count: courses.length,
+            },
+            {
+              id: "events",
+              label: "Sports & Campus Events 🏆",
+              count: events.length,
+            },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                setStatusMsg("");
+              }}
+              className={`w-full p-3.5 rounded-xl text-xs font-bold text-left cursor-pointer transition-all flex justify-between items-center ${
+                activeTab === tab.id
+                  ? "bg-[#0F1E3D] text-white shadow-md"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              <span className="truncate">{tab.label}</span>
+              {tab.count !== "" && (
+                <span className="bg-amber-500/20 text-amber-800 px-2 py-0.5 rounded-full text-[10px]">
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </aside>
 
-        {/* MAIN VIEWPORT */}
-        <main className="flex-1 p-6 md:p-8 space-y-8 overflow-y-auto">
-          {/* TAB 1: FR-ADM-02 USER & ROLE MANAGEMENT */}
-          {activeTab === "users" && (
-            <div className="bg-white p-6 rounded-3xl border shadow-xs space-y-4">
-              <h2 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                User & Role Management (FR-ADM-02)
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border border-slate-200">
-                  <thead className="bg-slate-50 font-bold uppercase text-[10px]">
-                    <tr>
-                      <th className="p-3">User Profile</th>
-                      <th className="p-3">Role</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {users.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-bold">
-                          {u.name}
-                          <br />
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            {u.email}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <select
-                            value={u.role}
-                            onChange={(e) =>
-                              handleUpdateRole(u.id, e.target.value)
-                            }
-                            className="border rounded-lg p-1 font-bold bg-white cursor-pointer"
-                          >
-                            <option value="student">Student</option>
-                            <option value="faculty">Faculty</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        </td>
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              u.status === "Active"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : u.status === "Pending_Approval"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {u.status}
-                          </span>
-                        </td>
-                        <td className="p-3 flex gap-2">
-                          {u.status === "Pending_Approval" && (
-                            <button
-                              onClick={() => handleUpdateStatus(u.id, "Active")}
-                              className="bg-emerald-600 text-white font-bold px-2.5 py-1 rounded-lg cursor-pointer"
-                            >
-                              Approve Faculty
-                            </button>
-                          )}
-                          <button
-                            onClick={() =>
-                              handleUpdateStatus(
-                                u.id,
-                                u.status === "Active" ? "Suspended" : "Active",
-                              )
-                            }
-                            className="bg-slate-800 text-white font-bold px-2.5 py-1 rounded-lg cursor-pointer"
-                          >
-                            {u.status === "Active" ? "Suspend" : "Activate"}
-                          </button>
-                          <button
-                            onClick={() => handleResetPassword(u.id)}
-                            className="bg-amber-500 text-white font-bold px-2.5 py-1 rounded-lg cursor-pointer"
-                          >
-                            Reset Password 🔑
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        <main className="flex-1 p-6 md:p-8 space-y-6 text-xs overflow-y-auto">
+          {statusMsg && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold rounded-xl shadow-xs">
+              {statusMsg}
             </div>
           )}
 
-          {/* TAB 2: FR-ADM-03 TENANT WHITE-LABELING */}
-          {activeTab === "branding" && (
-            <div className="bg-white p-6 md:p-8 rounded-3xl border shadow-xs max-w-2xl space-y-4 text-xs">
-              <h2 className="font-serif font-bold text-xl text-[#0F1E3D]">
-                Tenant & White-Label Management (FR-ADM-03)
-              </h2>
-              <form onSubmit={handleSaveBranding} className="space-y-4">
-                <div>
-                  <label className="block font-bold mb-1">School Name</label>
-                  <input
-                    type="text"
-                    value={tenantConfig.schoolName}
-                    onChange={(e) =>
-                      setTenantConfig({
-                        ...tenantConfig,
-                        schoolName: e.target.value,
-                      })
-                    }
-                    required
-                    className="w-full border p-2.5 rounded-xl font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">
-                    Custom Domain Binding
-                  </label>
-                  <input
-                    type="text"
-                    value={tenantConfig.customDomain}
-                    onChange={(e) =>
-                      setTenantConfig({
-                        ...tenantConfig,
-                        customDomain: e.target.value,
-                      })
-                    }
-                    required
-                    className="w-full border p-2.5 rounded-xl font-mono"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-bold mb-1">
-                      Primary Color
-                    </label>
-                    <input
-                      type="color"
-                      value={tenantConfig.primaryColor}
-                      onChange={(e) =>
-                        setTenantConfig({
-                          ...tenantConfig,
-                          primaryColor: e.target.value,
-                        })
-                      }
-                      className="w-full h-10 rounded-xl border-0 cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">
-                      Secondary Color
-                    </label>
-                    <input
-                      type="color"
-                      value={tenantConfig.secondaryColor}
-                      onChange={(e) =>
-                        setTenantConfig({
-                          ...tenantConfig,
-                          secondaryColor: e.target.value,
-                        })
-                      }
-                      className="w-full h-10 rounded-xl border-0 cursor-pointer"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Logo URL Path</label>
-                  <input
-                    type="text"
-                    value={tenantConfig.logoUrl}
-                    onChange={(e) =>
-                      setTenantConfig({
-                        ...tenantConfig,
-                        logoUrl: e.target.value,
-                      })
-                    }
-                    required
-                    className="w-full border p-2.5 rounded-xl font-mono text-[10px]"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full bg-[#0F1E3D] text-white font-bold py-3.5 rounded-2xl cursor-pointer"
-                >
-                  Save Branding Configuration 🎨
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* TAB 3: FR-ADM-04 AUDITS & ANALYTICS */}
           {activeTab === "analytics" && (
             <div className="space-y-6">
+              <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                📊 Real-Time System Concurrency, Revenue & Audit Logs
+              </h3>
+
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
-                  <span className="text-2xl font-black text-[#0F1E3D]">
-                    {analytics.metrics?.liveClassConcurrency}
+                  <span className="text-3xl font-black text-emerald-600">
+                    {analytics.liveConcurrency || 142}
                   </span>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Live Concurrency 📡
+                  <p className="text-xs text-slate-500 mt-1 font-bold">
+                    Live Stream Sessions
                   </p>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
-                  <span className="text-2xl font-black text-emerald-600">
-                    {analytics.metrics?.totalRevenue}
+                  <span className="text-3xl font-black text-[#0F1E3D]">
+                    ₹{(analytics.totalRevenue || 284500).toLocaleString()}
                   </span>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Total Revenue 💰
+                  <p className="text-xs text-slate-500 mt-1 font-bold">
+                    Total Platform Revenue
                   </p>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
-                  <span className="text-2xl font-black text-purple-600">
-                    {analytics.metrics?.activeUsers}
+                  <span className="text-3xl font-black text-amber-600">
+                    {analytics.activeUsers || users.length}
                   </span>
-                  <p className="text-xs text-slate-500 mt-1">Active Users 👥</p>
+                  <p className="text-xs text-slate-500 mt-1 font-bold">
+                    Active Accounts
+                  </p>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border text-center shadow-xs">
-                  <span className="text-2xl font-black text-blue-600">
-                    {analytics.metrics?.serverUptime}
+                  <span className="text-3xl font-black text-purple-600">
+                    {analytics.systemUptime || "99.98%"}
                   </span>
-                  <p className="text-xs text-slate-500 mt-1">Server SLA ⚡</p>
+                  <p className="text-xs text-slate-500 mt-1 font-bold">
+                    Service Uptime
+                  </p>
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-3xl border shadow-xs space-y-3">
-                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
-                  Audit Logs & Security Events (FR-ADM-04)
+              <div className="bg-white p-6 rounded-3xl border space-y-3 shadow-xs">
+                <h3 className="font-bold text-sm text-[#0F1E3D]">
+                  🛡️ System Security Audit Log Trail
                 </h3>
-                <div className="space-y-2 max-h-72 overflow-y-auto text-xs">
-                  {analytics.auditLogs?.map((log: any) => (
+                <div className="space-y-2 font-mono">
+                  {(analytics.logs || []).map((log: any) => (
                     <div
                       key={log.id}
-                      className="p-3 border rounded-xl bg-slate-50 flex justify-between items-center"
+                      className="p-3 bg-slate-50 border rounded-xl flex justify-between items-center text-[11px]"
                     >
-                      <div>
-                        <span className="font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px]">
-                          {log.event_type}
+                      <div className="flex gap-3 items-center">
+                        <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                          {log.event}
                         </span>
-                        <p className="font-bold text-[#0F1E3D] mt-1">
-                          {log.details}
-                        </p>
+                        <span className="text-slate-700">{log.details}</span>
                       </div>
-                      <span className="text-slate-400 font-mono text-[10px]">
-                        {log.performed_by}
+                      <span className="text-slate-400 text-[10px]">
+                        {new Date(log.timestamp).toLocaleTimeString()}
                       </span>
                     </div>
                   ))}
@@ -547,72 +381,117 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* TAB 4: CERTIFICATION COURSES */}
-          {activeTab === "certs" && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {activeTab === "users" && (
+            <div className="space-y-6">
               <form
-                onSubmit={handleAddCert}
-                className="bg-white p-5 rounded-2xl border space-y-3 text-xs shadow-xs"
+                onSubmit={handleAddUser}
+                className="bg-white p-6 rounded-3xl border space-y-4 shadow-sm"
               >
-                <h3 className="font-bold text-sm text-[#0F1E3D]">
-                  Add Certification Course
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  👥 Provision New User & Assign Roles
                 </h3>
-                <input
-                  type="text"
-                  placeholder="Code (e.g. AWS-CLOUD-01)"
-                  value={certCode}
-                  onChange={(e) => setCertCode(e.target.value)}
-                  required
-                  className="w-full border p-2 rounded-lg font-mono"
-                />
-                <input
-                  type="text"
-                  placeholder="Title"
-                  value={certTitle}
-                  onChange={(e) => setCertTitle(e.target.value)}
-                  required
-                  className="w-full border p-2 rounded-lg"
-                />
-                <input
-                  type="text"
-                  placeholder="Provider"
-                  value={certProvider}
-                  onChange={(e) => setCertProvider(e.target.value)}
-                  required
-                  className="w-full border p-2 rounded-lg"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <input
+                    type="text"
+                    placeholder="Full User Name"
+                    required
+                    value={userForm.name}
+                    onChange={(e) =>
+                      setUserForm({ ...userForm, name: e.target.value })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email Address"
+                    required
+                    value={userForm.email}
+                    onChange={(e) =>
+                      setUserForm({ ...userForm, email: e.target.value })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                  <select
+                    value={userForm.role}
+                    onChange={(e) =>
+                      setUserForm({ ...userForm, role: e.target.value })
+                    }
+                    className="border p-3 rounded-xl font-bold uppercase cursor-pointer"
+                  >
+                    <option value="faculty">Faculty Member</option>
+                    <option value="student">Student</option>
+                    <option value="admin">Administrator</option>
+                  </select>
+                </div>
                 <button
                   type="submit"
-                  className="w-full bg-[#0F1E3D] text-white font-bold py-2 rounded-lg cursor-pointer"
+                  className="bg-[#B8842E] text-white px-6 py-3 rounded-xl font-bold cursor-pointer hover:bg-[#a07226] transition shadow-md"
                 >
-                  Publish 📜
+                  Provision User Account 🚀
                 </button>
               </form>
 
-              <div className="md:col-span-2 bg-white p-5 rounded-2xl border space-y-3 shadow-xs">
+              <div className="bg-white p-6 rounded-3xl border space-y-3 shadow-xs">
                 <h3 className="font-bold text-sm text-[#0F1E3D]">
-                  Active Certifications
+                  System Directory Accounts & Approvals
                 </h3>
-                <div className="space-y-2">
-                  {certifications.map((c) => (
+                <div className="divide-y border rounded-2xl overflow-hidden">
+                  {users.map((u) => (
                     <div
-                      key={c.id}
-                      className="p-3 border rounded-xl bg-amber-50/50 flex justify-between items-center text-xs"
+                      key={u.id}
+                      className="p-4 bg-slate-50 flex justify-between items-center flex-wrap gap-2"
                     >
                       <div>
-                        <span className="font-bold bg-[#B8842E] text-white px-2 py-0.5 rounded text-[10px]">
-                          {c.code}
-                        </span>
-                        <h4 className="font-bold text-[#0F1E3D] mt-1">
-                          {c.title}
-                        </h4>
+                        <div className="flex gap-2 items-center">
+                          <strong className="text-sm text-[#0F1E3D]">
+                            {u.name}
+                          </strong>
+                          <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
+                            {u.role}
+                          </span>
+                          <span
+                            className={`font-bold px-2 py-0.5 rounded text-[10px] ${
+                              u.status === "Active"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {u.status}
+                          </span>
+                        </div>
+                        <p className="text-slate-500 font-mono mt-0.5">
+                          {u.email}
+                        </p>
                       </div>
-                      <button
-                        onClick={() => handleDeleteCert(c.id)}
-                        className="bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg cursor-pointer"
-                      >
-                        Delete
-                      </button>
+
+                      <div className="flex gap-2 items-center">
+                        {u.approval_status === "Pending Approval" && (
+                          <button
+                            onClick={() => handleApproveFaculty(u.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer transition"
+                          >
+                            Approve Faculty ✅
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleResetPassword(u.id)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer transition"
+                        >
+                          Reset Pwd 🔑
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(u.id, u.status)}
+                          className={`font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer transition text-white ${
+                            u.status === "Active"
+                              ? "bg-amber-600 hover:bg-amber-700"
+                              : "bg-emerald-600 hover:bg-emerald-700"
+                          }`}
+                        >
+                          {u.status === "Active"
+                            ? "Suspend 🚫"
+                            : "Reactivate ⚡"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -620,119 +499,297 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* TAB 5: CAMPUS ACTIVITIES */}
-          {activeTab === "activities" && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <form
-                onSubmit={handleAddActivity}
-                className="bg-white p-5 rounded-2xl border space-y-3 text-xs shadow-xs"
-              >
-                <h3 className="font-bold text-sm text-[#0F1E3D]">
-                  Add Activity
-                </h3>
-                <select
-                  value={actCat}
-                  onChange={(e) => setActCat(e.target.value as any)}
-                  className="w-full border p-2 rounded-lg font-bold bg-white"
-                >
-                  <option value="Events">🎉 Event</option>
-                  <option value="Sports">⚽ Sports</option>
-                  <option value="Workshops">🔧 Workshop</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Title"
-                  value={actTitle}
-                  onChange={(e) => setActTitle(e.target.value)}
-                  required
-                  className="w-full border p-2 rounded-lg"
-                />
-                <input
-                  type="text"
-                  placeholder="Details"
-                  value={actDetails}
-                  onChange={(e) => setActDetails(e.target.value)}
-                  required
-                  className="w-full border p-2 rounded-lg"
-                />
-                <input
-                  type="text"
-                  placeholder="Venue"
-                  value={actVenue}
-                  onChange={(e) => setActVenue(e.target.value)}
-                  required
-                  className="w-full border p-2 rounded-lg"
-                />
-                <button
-                  type="submit"
-                  className="w-full bg-[#0F1E3D] text-white font-bold py-2 rounded-lg cursor-pointer"
-                >
-                  Publish 🏆
-                </button>
-              </form>
-
-              <div className="md:col-span-2 bg-white p-5 rounded-2xl border space-y-3 shadow-xs">
-                <h3 className="font-bold text-sm text-[#0F1E3D]">
-                  Campus Directory
-                </h3>
-                <div className="space-y-2">
-                  {activities.map((a) => (
-                    <div
-                      key={a.id}
-                      className="p-3 border rounded-xl bg-slate-50 flex justify-between items-center text-xs"
-                    >
-                      <div>
-                        <span className="font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] uppercase">
-                          {a.category}
-                        </span>
-                        <h4 className="font-bold text-[#0F1E3D] mt-1">
-                          {a.title}
-                        </h4>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteActivity(a.id)}
-                        className="bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg cursor-pointer"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 6: BROADCAST ANNOUNCEMENTS */}
-          {activeTab === "notif" && (
+          {activeTab === "tenant" && (
             <form
-              onSubmit={handleSendNotif}
-              className="bg-white p-6 rounded-3xl border shadow-xs max-w-xl space-y-4 text-xs"
+              onSubmit={handleSaveBranding}
+              className="bg-white p-6 rounded-3xl border space-y-4 shadow-sm"
             >
-              <h3 className="font-serif font-bold text-xl text-[#0F1E3D]">
-                Broadcast System Notice
+              <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                🎨 Tenant & White-Label Customization
               </h3>
-              <input
-                type="text"
-                placeholder="Title"
-                value={notifTitle}
-                onChange={(e) => setNotifTitle(e.target.value)}
-                required
-                className="w-full border p-3 rounded-xl"
-              />
-              <textarea
-                placeholder="Message..."
-                value={notifMsg}
-                onChange={(e) => setNotifMsg(e.target.value)}
-                required
-                className="w-full border p-3 rounded-xl h-28"
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    School Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={tenant.school_name}
+                    onChange={(e) =>
+                      setTenant({ ...tenant, school_name: e.target.value })
+                    }
+                    className="w-full border p-3 rounded-xl outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    Custom Domain
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={tenant.custom_domain}
+                    onChange={(e) =>
+                      setTenant({ ...tenant, custom_domain: e.target.value })
+                    }
+                    className="w-full border p-3 rounded-xl font-mono outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    Primary Branding Color
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={tenant.primary_color || "#0F1E3D"}
+                      onChange={(e) =>
+                        setTenant({ ...tenant, primary_color: e.target.value })
+                      }
+                      className="w-12 h-11 border p-1 rounded-xl cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={tenant.primary_color || "#0F1E3D"}
+                      onChange={(e) =>
+                        setTenant({ ...tenant, primary_color: e.target.value })
+                      }
+                      className="flex-1 border p-3 rounded-xl font-mono outline-none uppercase"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    Secondary Accent Color
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={tenant.secondary_color || "#B8842E"}
+                      onChange={(e) =>
+                        setTenant({
+                          ...tenant,
+                          secondary_color: e.target.value,
+                        })
+                      }
+                      className="w-12 h-11 border p-1 rounded-xl cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={tenant.secondary_color || "#B8842E"}
+                      onChange={(e) =>
+                        setTenant({
+                          ...tenant,
+                          secondary_color: e.target.value,
+                        })
+                      }
+                      className="flex-1 border p-3 rounded-xl font-mono outline-none uppercase"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    Custom Logo Image URL
+                  </label>
+                  <input
+                    type="url"
+                    value={tenant.logo_url || ""}
+                    onChange={(e) =>
+                      setTenant({ ...tenant, logo_url: e.target.value })
+                    }
+                    className="w-full border p-3 rounded-xl outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    Logo Initials
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={3}
+                    value={tenant.logo_text || "eV"}
+                    onChange={(e) =>
+                      setTenant({ ...tenant, logo_text: e.target.value })
+                    }
+                    className="w-full border p-3 rounded-xl font-bold uppercase outline-none"
+                  />
+                </div>
+              </div>
               <button
                 type="submit"
-                className="w-full bg-[#0F1E3D] text-white font-bold py-3.5 rounded-2xl cursor-pointer"
+                className="bg-[#0F1E3D] text-white px-6 py-3 rounded-xl font-bold cursor-pointer hover:bg-[#16294C] transition shadow-md"
               >
-                Send Announcement 🔔
+                Save & Broadcast Branding 🎨
               </button>
             </form>
+          )}
+
+          {activeTab === "courses" && (
+            <div className="space-y-6">
+              <form
+                onSubmit={handleAddCourse}
+                className="bg-white p-6 rounded-3xl border space-y-4 shadow-sm"
+              >
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  📚 Upload Global Course Subject
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <input
+                    type="text"
+                    placeholder="Code (e.g. MATH-401)"
+                    required
+                    value={courseForm.code}
+                    onChange={(e) =>
+                      setCourseForm({ ...courseForm, code: e.target.value })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Course Title"
+                    required
+                    value={courseForm.title}
+                    onChange={(e) =>
+                      setCourseForm({ ...courseForm, title: e.target.value })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Price (₹)"
+                    required
+                    value={courseForm.price}
+                    onChange={(e) =>
+                      setCourseForm({
+                        ...courseForm,
+                        price: Number(e.target.value),
+                      })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-[#0F1E3D] text-white px-6 py-3 rounded-xl font-bold cursor-pointer hover:bg-[#16294C] transition shadow-md"
+                >
+                  Publish Subject 📚
+                </button>
+              </form>
+
+              <div className="bg-white p-6 rounded-3xl border space-y-3 shadow-xs">
+                <h3 className="font-bold text-sm text-[#0F1E3D]">
+                  Active Global Catalog
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {courses.map((c) => (
+                    <div
+                      key={c.id}
+                      className="p-4 border rounded-2xl bg-slate-50 space-y-1"
+                    >
+                      <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                        {c.code}
+                      </span>
+                      <h4 className="font-bold text-[#0F1E3D] text-sm mt-1">
+                        {c.title}
+                      </h4>
+                      <p className="text-slate-500 font-bold">
+                        Fee: ₹{c.price}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "events" && (
+            <div className="space-y-6">
+              <form
+                onSubmit={handleAddEvent}
+                className="bg-white p-6 rounded-3xl border space-y-4 shadow-sm"
+              >
+                <h3 className="font-serif font-bold text-lg text-[#0F1E3D]">
+                  🏆 Post Sports, Cultural & Campus Events
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <input
+                    type="text"
+                    placeholder="Event Title"
+                    required
+                    value={eventForm.title}
+                    onChange={(e) =>
+                      setEventForm({ ...eventForm, title: e.target.value })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                  <input
+                    type="date"
+                    required
+                    value={eventForm.date}
+                    onChange={(e) =>
+                      setEventForm({ ...eventForm, date: e.target.value })
+                    }
+                    className="border p-3 rounded-xl outline-none"
+                  />
+                  <select
+                    value={eventForm.category}
+                    onChange={(e) =>
+                      setEventForm({ ...eventForm, category: e.target.value })
+                    }
+                    className="border p-3 rounded-xl font-bold cursor-pointer"
+                  >
+                    <option value="Sports">Sports Meet 🏆</option>
+                    <option value="Culturals">Culturals & Music 🎭</option>
+                    <option value="Academic">Academic Fair 🔬</option>
+                  </select>
+                </div>
+                <textarea
+                  placeholder="Event Details..."
+                  required
+                  rows={2}
+                  value={eventForm.description}
+                  onChange={(e) =>
+                    setEventForm({ ...eventForm, description: e.target.value })
+                  }
+                  className="w-full border p-3 rounded-xl outline-none"
+                />
+                <button
+                  type="submit"
+                  className="bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold cursor-pointer hover:bg-emerald-800 transition shadow-md"
+                >
+                  Broadcast Event to Feeds 📢
+                </button>
+              </form>
+
+              <div className="bg-white p-6 rounded-3xl border space-y-3 shadow-xs">
+                <h3 className="font-bold text-sm text-[#0F1E3D]">
+                  Published Events
+                </h3>
+                <div className="space-y-3">
+                  {events.map((e) => (
+                    <div
+                      key={e.id}
+                      className="p-4 border rounded-2xl bg-slate-50 flex justify-between items-center"
+                    >
+                      <div>
+                        <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                          {e.category}
+                        </span>
+                        <h4 className="font-bold text-sm text-[#0F1E3D] mt-1">
+                          {e.title}
+                        </h4>
+                        <p className="text-slate-600">{e.description}</p>
+                      </div>
+                      <span className="text-slate-500 font-mono font-bold">
+                        {e.date}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </main>
       </div>

@@ -1,13 +1,21 @@
 import { Module } from "@nestjs/common";
-import { AdminController } from "./admin/admin.controller";
-import { FacultyController } from "./faculty/faculty.controller";
-import { StudentApiController } from "./academics/academics.controller";
-import { AuthModule } from "./auth/auth.module";
+import { ConfigModule } from "@nestjs/config";
 import { DatabaseModule } from "./database/database.module";
+import { AuthModule } from "./auth/auth.module";
+// import { AdminModule } from "./admin/admin.module"; // Commented out until created
+import { FacultyModule } from "./faculty/faculty.module";
 
 @Module({
-  imports: [DatabaseModule, AuthModule],
-  controllers: [AdminController, FacultyController, StudentApiController],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    DatabaseModule,
+    AuthModule,
+    // AdminModule,
+    FacultyModule,
+  ],
+  controllers: [],
   providers: [],
 })
 export class AppModule {}

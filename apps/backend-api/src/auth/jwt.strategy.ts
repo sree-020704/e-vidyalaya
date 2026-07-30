@@ -1,14 +1,30 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 
+import { PassportStrategy } from "@nestjs/passport";
+import { ExtractJwt, Strategy } from "passport-jwt";
+
 @Injectable()
-export class JwtStrategy {
-  validateToken(token: string) {
-    if (!token || !token.startsWith("jwt-session-token-")) {
-      throw new UnauthorizedException(
-        "Invalid or expired authentication token",
-      );
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor() {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+
+      ignoreExpiration: false,
+
+      secretOrKey:
+        process.env.JWT_SECRET || "evidyalaya_super_secret_jwt_key_2026",
+    });
+  }
+
+  async validate(payload: any) {
+    if (!payload) {
+      throw new UnauthorizedException("Invalid authentication token.");
     }
-    const userId = token.replace("jwt-session-token-", "");
-    return { userId: Number(userId) };
+
+    return {
+      id: payload.id,
+      email: payload.email,
+      role: payload.role,
+    };
   }
 }
